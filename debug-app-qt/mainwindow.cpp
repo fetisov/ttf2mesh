@@ -187,7 +187,11 @@ public:
             int id = ttf->char2glyph[i];
             ttf_outline_t *o = ttf_linear_outline(ttf->glyphs + id, quality);
             if (o == NULL) continue;
-
+            if (o->total_points < 3)
+            {
+                ttf_free_outline(o);
+                continue;
+            }
             QTime t1 = QTime::currentTime();
             mesher_t *m = create_mesher(o);
             int code = mesher(m, optim);
@@ -428,7 +432,7 @@ void pushArrow(const ttf_point_t p[2], fvec &x, fvec &y)
 
 void MainWindow::updateCurvesPlot()
 {
-    ttf_outline_t *o;
+    ttf_outline_t *o, *linear;
 
     gca(ui->curves);
     cla();
@@ -437,7 +441,8 @@ void MainWindow::updateCurvesPlot()
     if (ttf == NULL || g == NULL) return;
     if (g->outline == NULL) return;
 
-    o = ttf_linear_outline(g, ui->smooth->isChecked() ? TTF_QUALITY_HIGH : 0);
+    linear = ttf_linear_outline(g, ui->smooth->isChecked() ? 128 : 0);
+    o = linear;
     for (int i = 0; i < o->ncontours; i++)
     {
         fvec x;
@@ -453,23 +458,40 @@ void MainWindow::updateCurvesPlot()
         y << o->cont[i].pt[0].y;
         plot(x, y);
     }
-    ttf_free_outline(o);
 
-    o = g->outline;
-    for (int i = 0; i < o->ncontours; i++)
+    switch (ui->showCurvePoints->currentIndex())
     {
-        fvec x;
-        fvec y;
-        for (int j = 0; j < o->cont[i].length; j++)
-        {
-            x << o->cont[i].pt[j].x;
-            y << o->cont[i].pt[j].y;
-        }
-        plot(x, y, ".");
+    case 0: o = g->outline; break;
+    case 1: o = linear; break;
+    default: o = NULL;
     }
 
-    dvec x;
-    dvec y;
+    if (o != NULL)
+    {
+        fvec x, xoc;
+        fvec y, yoc;
+        for (int i = 0; i < o->ncontours; i++)
+            for (int j = 0; j < o->cont[i].length; j++)
+                if (o->cont[i].pt[j].onc)
+                {
+                    xoc << o->cont[i].pt[j].x;
+                    yoc << o->cont[i].pt[j].y;
+                }
+                else
+                {
+                    x << o->cont[i].pt[j].x;
+                    y << o->cont[i].pt[j].y;
+                }
+        plot(xoc, yoc, ".k");
+        plot(x, y, ".#999");
+        for (int i = 0; i < o->ncontours; i++)
+            for (int j = 0; j < o->cont[i].length; j++)
+                text(o->cont[i].pt[j].x, o->cont[i].pt[j].y, 0,
+                     QString().sprintf("p%i", j))->font.setPixelSize(10);
+    }
+
+    fvec x;
+    fvec y;
     x << g->xbounds[0] << g->xbounds[0] << g->xbounds[1] << g->xbounds[1] << g->xbounds[0];
     y << g->ybounds[0] << g->ybounds[1] << g->ybounds[1] << g->ybounds[0] << g->ybounds[0];
     plot(x, y, ":k");
@@ -479,6 +501,8 @@ void MainWindow::updateCurvesPlot()
     x << g->lbearing << g->lbearing << NAN << g->advance << g->advance;
     y << g->ybounds[0] << g->ybounds[1] << NAN << g->ybounds[0] << g->ybounds[1];
     plot(x, y, "-k");
+
+    ttf_free_outline(linear);
 }
 
 bool line_intersect(float p, float p0, float p1, float *t, int *sign)
@@ -719,6 +743,10 @@ void MainWindow::updateFontInfo()
 void MainWindow::updateUi()
 {
     if (updating) return;
+
+extern bool USE_TRESHOLD;
+USE_TRESHOLD = ui->USE_TRESHOLD->isChecked();
+
     updateGlyphsList();
     updateFontInfo();
     if (ui->tabWidget->currentIndex() == 0)

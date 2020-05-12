@@ -1672,12 +1672,34 @@ static int linearize_qbezier(ttf_point_t curve[3], ttf_point_t *dst, uint8_t qua
     return res;
 }
 
+bool USE_TRESHOLD = true;
+
+static __inline float herons_area(float a, float b, float c)
+{
+    float p = (a + b + c) / 2.0f;
+    return sqrtf(p * (p - a) * (p - b) * (p - c));
+}
+
+static __inline float herons_area_v(const float v1[2], const float v2[2], const float v3[2])
+{
+    float e1[2], e2[2], e3[2];
+    VECSUB(e1, v1, v2);
+    VECSUB(e2, v2, v3);
+    VECSUB(e3, v3, v1);
+    return herons_area(VECLEN(e1), VECLEN(e2), VECLEN(e3));
+}
+
+static __inline float herons_area_p(const ttf_point_t *a, const ttf_point_t *b, const ttf_point_t *c)
+{
+    return herons_area_v(&a->x, &b->x, &c->x);
+}
+
+/* TODO: simplify! */
 static int linearize_contour(ttf_point_t *src, ttf_point_t *dst, int src_count, uint8_t quality)
 {
-    int i, state, res, qlen;
+    int i, state, res;
     ttf_point_t queue[3];
 
-    qlen = 0;
     state = 0;
     res = 0;
     for (i = 0; i < src_count; i++)
@@ -1686,47 +1708,53 @@ static int linearize_contour(ttf_point_t *src, ttf_point_t *dst, int src_count, 
         case 0:
             queue[0] = src[0];
             if (dst) dst[0] = src[0];
-            qlen = 1;
             state = 1;
             res = 1;
             break;
         case 1:
             if (src[i].onc)
             {
+                /* TODO: check edge length */
                 if (dst) dst[res] = src[i];
                 queue[0] = src[i];
                 state = 1;
-                qlen = 1;
                 res++;
             }
             else
             {
-                queue[qlen++] = src[i];
+                queue[1] = src[i];
                 state = 2;
             }
             break;
         case 2:
             if (src[i].onc)
             {
-                queue[qlen] = src[i];
-                res += linearize_qbezier(queue, dst ? dst + res : NULL, quality);
+                queue[2] = src[i];
+                if (herons_area_p(queue + 0, queue + 1, queue + 2) > 1e-5 || !USE_TRESHOLD)
+                    res += linearize_qbezier(queue, dst ? dst + res : NULL, quality);
                 if (dst) dst[res] = src[i];
                 res++;
                 queue[0] = src[i];
-                qlen = 1;
                 state = 1;
             }
             else
             {
                 queue[2].x = (queue[1].x + src[i].x) / 2;
                 queue[2].y = (queue[1].y + src[i].y) / 2;
-                res += linearize_qbezier(queue, dst ? dst + res : NULL, quality);
-                if (dst) dst[res] = queue[2];
-                res++;
-                queue[0] = queue[2];
-                queue[1] = src[i];
-                qlen = 2;
-                state = 2;
+                if (herons_area_p(queue + 0, queue + 1, queue + 2) > 1e-5 || !USE_TRESHOLD)
+                {
+                    res += linearize_qbezier(queue, dst ? dst + res : NULL, quality);
+                    if (dst) dst[res] = queue[2];
+                    res++;
+                    queue[0] = queue[2];
+                    queue[1] = src[i];
+                    state = 2;
+                }
+                else
+                {
+                    queue[1] = queue[2];
+                    state = 2;
+                }
             }
             break;
         }
@@ -1734,25 +1762,23 @@ static int linearize_contour(ttf_point_t *src, ttf_point_t *dst, int src_count, 
     if (state == 2)
     {
         queue[2] = src[0];
-        res += linearize_qbezier(queue, dst ? dst + res : NULL, quality);
+        if (herons_area_p(queue + 0, queue + 1, queue + 2) > 1e-5 || !USE_TRESHOLD)
+            res += linearize_qbezier(queue, dst ? dst + res : NULL, quality);
     }
 
     return res;
 }
 
-static int ttf_outline_rm_dup_points(ttf_point_t *pt, int count)
+static int ttf_fix_linear_bags(ttf_point_t *pt, int count)
 {
     int i, n;
-    if (count == 0) return 0;
+if (!USE_TRESHOLD) return count;
+    if (count < 3) return 0;
     n = 1;
-    for (i = 1; i < count; i++)
-    {
-        float dx, dy;
-        dx = pt[i].x - pt[n - 1].x;
-        dy = pt[i].y - pt[n - 1].y;
-        if (fabsf(dx) > EPSILON || fabsf(dy) > EPSILON)
+    for (i = 1; i < count - 1; i++)
+        if (herons_area_p(pt + n - 1, pt + i, pt + i + 1) > EPSILON)
             pt[n++] = pt[i];
-    }
+    pt[n++] = pt[count - 1];
     while (n > 1)
     {
         float dx, dy;
@@ -1761,7 +1787,7 @@ static int ttf_outline_rm_dup_points(ttf_point_t *pt, int count)
         if (fabsf(dx) > EPSILON || fabsf(dy) > EPSILON) break;
         n--;
     }
-    return n;
+    return n >= 3 ? n : 0;
 }
 
 ttf_outline_t *ttf_linear_outline(const ttf_glyph_t *glyph, uint8_t quality)
@@ -1783,7 +1809,7 @@ ttf_outline_t *ttf_linear_outline(const ttf_glyph_t *glyph, uint8_t quality)
     for (i = 0; i < o->ncontours; i++)
     {
         npoints = linearize_contour(o->cont[i].pt, s->cont[i].pt, o->cont[i].length, quality);
-        npoints = ttf_outline_rm_dup_points(s->cont[i].pt, npoints);
+        npoints = ttf_fix_linear_bags(s->cont[i].pt, npoints);
         if (i != o->ncontours - 1)
             s->cont[i + 1].pt = s->cont[i].pt + npoints;
         s->cont[i].length = npoints;
@@ -3369,6 +3395,7 @@ int prepare_triangulation_objects(mesher_t *m)
 int fix_contours_bugs(mesher_t *m)
 {
     /* Попытаемся бороться с дублирующимися точками */
+    bool need_resorting = false;
     for (int i = 0; i < m->nv - 1; i++)
     {
         mvs_t *v1 = m->s[i];
@@ -3391,7 +3418,11 @@ int fix_contours_bugs(mesher_t *m)
         VECADD(delta[1], v2dir[0], v2dir[1]);
         VECADD(&v1->x, &v1->x, delta[0]);
         VECADD(&v2->x, &v2->x, delta[1]);
+        need_resorting = true;
     }
+    /* Сортируем массив вершин по координате y */
+    if (need_resorting)
+        qsort(m->s, m->nv, sizeof(mvs_t *), mvs_sorting_fn);
 
     /* Попытаемся бороться с перекрутами контура, вроде такого:
             D|                         D

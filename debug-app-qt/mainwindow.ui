@@ -11,7 +11,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>MainWindow</string>
+   <string>ttf2mesh debug application</string>
   </property>
   <widget class="QWidget" name="centralWidget">
    <layout class="QGridLayout" name="gridLayout">
@@ -99,22 +99,44 @@
     <item row="3" column="0" colspan="2">
      <widget class="QTabWidget" name="tabWidget">
       <property name="currentIndex">
-       <number>2</number>
+       <number>0</number>
       </property>
       <widget class="QWidget" name="curvesTab">
        <attribute name="title">
         <string>View curves</string>
        </attribute>
        <layout class="QGridLayout" name="gridLayout_2">
-        <item row="1" column="0">
-         <widget class="QMWidget" name="curves" native="true"/>
-        </item>
         <item row="0" column="0">
          <widget class="QCheckBox" name="smooth">
           <property name="text">
            <string>Smooth contours</string>
           </property>
+          <property name="checked">
+           <bool>true</bool>
+          </property>
          </widget>
+        </item>
+        <item row="0" column="1">
+         <widget class="QComboBox" name="showCurvePoints">
+          <item>
+           <property name="text">
+            <string>Show original outline points</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>Show linear outline points</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>No points</string>
+           </property>
+          </item>
+         </widget>
+        </item>
+        <item row="1" column="0" colspan="2">
+         <widget class="QMWidget" name="curves" native="true"/>
         </item>
        </layout>
       </widget>
@@ -470,6 +492,13 @@
         </item>
        </layout>
       </widget>
+     </widget>
+    </item>
+    <item row="2" column="0">
+     <widget class="QCheckBox" name="USE_TRESHOLD">
+      <property name="text">
+       <string>USE_TRESHOLD</string>
+      </property>
      </widget>
     </item>
    </layout>
@@ -905,6 +934,38 @@
     <hint type="sourcelabel">
      <x>-1</x>
      <y>-1</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>345</x>
+     <y>315</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>showCurvePoints</sender>
+   <signal>currentIndexChanged(int)</signal>
+   <receiver>MainWindow</receiver>
+   <slot>updateUi()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>510</x>
+     <y>154</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>345</x>
+     <y>315</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>USE_TRESHOLD</sender>
+   <signal>toggled(bool)</signal>
+   <receiver>MainWindow</receiver>
+   <slot>updateUi()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>175</x>
+     <y>115</y>
     </hint>
     <hint type="destinationlabel">
      <x>345</x>

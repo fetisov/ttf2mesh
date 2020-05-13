@@ -137,6 +137,13 @@ extern float randn(float mu, float sigma);
 using namespace qmwrap;
 using namespace qmplot;
 
+uint64_t utime(void)
+{
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return (uint64_t)t.tv_sec * 1000000 + t.tv_nsec / 1000;
+}
+
 class FontTest
 {
 public:
@@ -145,14 +152,20 @@ public:
     public:
         Issue() {}
         Issue(const QString &link);
-        Issue(int code, const QString &font, int utf, int failed_at_step = -1, const char *message = "")
-            : code(code), utf(utf), font(font), failed_at_step(failed_at_step), message(message) {}
+        Issue(int code, const QString &font, int utf, int failed_at_step = -1, const char *message = "", int nvert = 0)
+            : code(code), utf(utf), font(font), failed_at_step(failed_at_step), message(message), nvert(nvert) {}
         QString toLink() const;
         int code;
         int utf;
         QString font;
         int failed_at_step;
         QString message;
+        int nvert;
+
+        static bool compareByNvert(const Issue &lhs, const Issue &rhs)
+        {
+          return lhs.nvert < rhs.nvert;
+        }
     };
 
     class TimeRep
@@ -173,6 +186,7 @@ public:
     void clearStat()
     {
         issue.clear();
+        huge10.clear();
         memset(&total, 0, sizeof(total));
         memset(&utf_errors, 0, sizeof(utf_errors));
     }
@@ -192,9 +206,10 @@ public:
                 ttf_free_outline(o);
                 continue;
             }
-            QTime t1 = QTime::currentTime();
             mesher_t *m = create_mesher(o);
+            uint64_t elapsed = utime();
             int code = mesher(m, optim);
+            elapsed = utime() - elapsed;
 
             if (code == MESHER_DONE)
             {
@@ -202,14 +217,24 @@ public:
                 total.done++;
                 total.vert += m->nv;
                 total.triangles += count_triangles(m);
-                timerep << TimeRep(m->nv, t1.elapsed());
+                timerep << TimeRep(m->nv, (int)elapsed);
+
+                int nvert = huge10.count() == 0 ? 0 : huge10[0].nvert;
+                if (m->nv > nvert)
+                {
+                    Issue I(0, ttf->info.full_name, ttf->chars[i], -1, "", m->nv);
+                    if (huge10.count() < 10)
+                        huge10 << I; else
+                        huge10[0] = I;
+                    std::sort(huge10.begin(), huge10.end(), Issue::compareByNvert);
+                }
             }
 
             if (code == MESHER_WARN)
             {
                 total.glyphs++;
                 total.warn++;
-                timerep << TimeRep(m->nv, t1.elapsed());
+                timerep << TimeRep(m->nv, (int)elapsed);
                 issue << Issue(code, ttf->info.full_name, ttf->chars[i]);
             }
 
@@ -232,6 +257,7 @@ public:
 public:
     Vec<Issue> issue;
     Vec<TimeRep> timerep;
+    Vec<Issue> huge10;
     struct
     {
         int fonts;
@@ -247,10 +273,10 @@ public:
 };
 
 FontTest::Issue::Issue(const QString &link)
-    : code(0), utf(0), failed_at_step(-1), message("")
+    : code(0), utf(0), failed_at_step(-1), message(""), nvert(0)
 {
     if (link.left(12) != "app://debug/") return;
-    QStringList sl = link.mid(12).split('/', QString::SkipEmptyParts);
+    QStringList sl = link.mid(12).split('/', QString::KeepEmptyParts);
     if (sl.count() != 5) return;
     code = sl[0].toInt();
     font = QByteArray::fromBase64(sl[1].toUtf8());
@@ -568,21 +594,46 @@ void MainWindow::updateDebugPage()
 
     QTime time = QTime::currentTime();
     ttf_outline_t *o = ttf_linear_outline(g, ui->quality->value());
+    if (o == NULL) return;
+    if (o->total_points < 3)
+    {
+        ttf_free_outline(o);
+        return;
+    }
     mesher_t *mesh = create_mesher(o);
+
     mesh->debug.stop_at_step = ui->stopAt->value();
     mesh->debug.breakpoint = sender() == ui->trap;
     int res = mesher(mesh, ui->deep->value());
 
+    int sweeping_point = -1;
+    sscanf(mesh->debug.message, "sweeping point %i", &sweeping_point);
+
     ui->debugState->setText(mesherDebugStr(res, mesh, time.elapsed()));
 
     fvec x, y;
+    for (int i = 0; i < mesh->nv; i++)
+    {
+        x << mesh->v[i].x << mesh->v[i].prev_in_contour->x << NAN;
+        y << mesh->v[i].y << mesh->v[i].prev_in_contour->y << NAN;
+    }
+    if (ui->drawOutline->isChecked())
+        plot(x, y, ":k");
+
+    x.clear();
+    y.clear();
     int last_contour = -1;
     for (int i = 0; i < mesh->nv; i++)
     {
         x << mesh->v[i].x;
         y << mesh->v[i].y;
         if (ui->pnums->isChecked())
-            text(mesh->v[i].x, mesh->v[i].y, 0, QString("p%1").arg(mesh->v[i].index))->font.setPixelSize(10);
+        {
+            QMText *t = text(mesh->v[i].x, mesh->v[i].y, 0, QString("p%1").arg(mesh->v[i].index));
+            t->font.setPixelSize(10);
+            if (mesh->v[i].index == sweeping_point)
+                t->font.setBold(true);
+        }
 
         if (last_contour != mesh->v[i].contour)
         {
@@ -626,8 +677,8 @@ void MainWindow::updateDebugPage()
         if (ui->tnums->isChecked())
         {
             QMText *tt = text(sumx / 6, sumy / 6, 0, QString("t%1").arg(ptr - mesh->t));
-            tt->font.setPixelSize(12);
-            tt->align = Qt::AlignBottom;
+            tt->font.setPixelSize(10);
+            tt->align = Qt::AlignCenter;
             if (ui->enums->isChecked())
             {
                 tt = text(sumx / 6, sumy / 6, 0, QString("(e%1/%2/%3)")
@@ -647,7 +698,9 @@ void MainWindow::updateDebugPage()
         x << NAN << e->v1->x << e->v2->x;
         y << NAN << e->v1->y << e->v2->y;
     }
-    plot(x, y, ":#999");
+  //plot(x, y, ":#999");
+    const char *style = QString(mesh->debug.message) == "sweep finishing" ? "-b" : "-r";
+    plot(x, y, style);
 
     x.clear();
     y.clear();
@@ -690,7 +743,7 @@ void MainWindow::applyTestResults(FontTest *t)
     QLabel *l2 = new QLabel(t->makeHtmlRep(), sa);
     l2->setTextInteractionFlags(Qt::TextBrowserInteraction);
     QMWidget *qm = new QMWidget(tab);
-    qm->setFixedHeight(200);
+    qm->setFixedHeight(250);
     sa->setWidget(l2);
     tab->layout()->addWidget(l1);
     tab->layout()->addWidget(sa);
@@ -714,6 +767,8 @@ void MainWindow::applyTestResults(FontTest *t)
     }
     gca(qm);
     plot(x, y, ".");
+    xlabel("Number of vertices");
+    ylabel("Time (usec)");
 
     ui->tabWidget->addTab(tab, "Stat");
     ui->tabWidget->setCurrentWidget(tab);
@@ -1168,6 +1223,31 @@ QString FontTest::makeHtmlRep()
                 total.fail, 100.0 * total.fail / total.glyphs, utf_errors_str.toUtf8().data(),
                 1000.0 * total.glyphs / total.time,
                 1.0 * total.time / total.glyphs);
+    if (huge10.count() > 0)
+    {
+        s += "<b>Top10 Huge glyphs</b>:";
+        s += "<table border=\"1\">"
+             "<tr>"
+             "<td>Font</td><td>Symbol</td><td>UTF Range</td><td>Vertices</td><td></td>"
+             "</tr>";
+        for (int i = 0; i < huge10.count(); i++)
+        {
+            s += QString().sprintf(
+                        "<tr>"
+                        "<td>%s</td>"
+                        "<td>U+%04X</td>"
+                        "<td>%s</td>"
+                        "<td>%i</td>"
+                        "<td><a href=\"%s\">View</a></td>"
+                        "</tr>",
+                        huge10[i].font.toUtf8().data(),
+                        huge10[i].utf,
+                        uranges[get_urange_index(huge10[i].utf)].name,
+                        huge10[i].nvert,
+                        huge10[i].toLink().toUtf8().data());
+        }
+        s += "</table>";
+    }
     if (total.fail > 0)
     {
         s += "<b>Errors</b>:";

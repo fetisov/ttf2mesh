@@ -93,7 +93,7 @@
 #endif
 
 /* Swapping of two values */
-#define SWAP(type, A, B) { type t = A; A = B; B = t; }
+#define SWAP(type, A, B) { type tmp = A; A = B; B = tmp; }
 
 /* -------------------- Working with vectors on xy-plane -------------------- */
 
@@ -3509,6 +3509,11 @@ int ttf_glyph2mesh(ttf_glyph_t *glyph, ttf_mesh_t **output, uint8_t quality, int
     /* Создаём outline и mesher */
     o = ttf_linear_outline(glyph, quality);
     if (o == NULL) return TTF_ERR_NOMEM;
+    if (o->total_points < 3)
+    {
+        ttf_free_outline(o);
+        return TTF_ERR_NO_OUTLINE;
+    }
     mesh = create_mesher(o);
     if (mesh == NULL)
     {

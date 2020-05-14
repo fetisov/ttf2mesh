@@ -212,3 +212,8 @@ CJK Compatibility Ideographs - 4 errors
 Небольшая демонстрация работы:
 
 ![image](https://habrastorage.org/webt/-z/60/mj/-z60mj6volo0p5unfcuu8fb1gtk.gif)
+
+### Хотите помочь проекту?
+[PayPal me](https://www.paypal.me/fetisovs) или:
+*MasterCard* 5469 3800 5517 1176
+*wmz* Z518568605100 *wmr* R885157851601

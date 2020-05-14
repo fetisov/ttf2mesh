@@ -798,10 +798,6 @@ void MainWindow::updateFontInfo()
 void MainWindow::updateUi()
 {
     if (updating) return;
-
-extern bool USE_TRESHOLD;
-USE_TRESHOLD = ui->USE_TRESHOLD->isChecked();
-
     updateGlyphsList();
     updateFontInfo();
     if (ui->tabWidget->currentIndex() == 0)

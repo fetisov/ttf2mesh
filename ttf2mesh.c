@@ -1672,8 +1672,6 @@ static int linearize_qbezier(ttf_point_t curve[3], ttf_point_t *dst, uint8_t qua
     return res;
 }
 
-bool USE_TRESHOLD = true;
-
 static __inline float herons_area(float a, float b, float c)
 {
     float p = (a + b + c) / 2.0f;
@@ -1730,7 +1728,7 @@ static int linearize_contour(ttf_point_t *src, ttf_point_t *dst, int src_count, 
             if (src[i].onc)
             {
                 queue[2] = src[i];
-                if (herons_area_p(queue + 0, queue + 1, queue + 2) > 1e-5 || !USE_TRESHOLD)
+                if (herons_area_p(queue + 0, queue + 1, queue + 2) > 1e-5)
                     res += linearize_qbezier(queue, dst ? dst + res : NULL, quality);
                 if (dst) dst[res] = src[i];
                 res++;
@@ -1741,7 +1739,7 @@ static int linearize_contour(ttf_point_t *src, ttf_point_t *dst, int src_count, 
             {
                 queue[2].x = (queue[1].x + src[i].x) / 2;
                 queue[2].y = (queue[1].y + src[i].y) / 2;
-                if (herons_area_p(queue + 0, queue + 1, queue + 2) > 1e-5 || !USE_TRESHOLD)
+                if (herons_area_p(queue + 0, queue + 1, queue + 2) > 1e-5)
                 {
                     res += linearize_qbezier(queue, dst ? dst + res : NULL, quality);
                     if (dst) dst[res] = queue[2];
@@ -1762,7 +1760,7 @@ static int linearize_contour(ttf_point_t *src, ttf_point_t *dst, int src_count, 
     if (state == 2)
     {
         queue[2] = src[0];
-        if (herons_area_p(queue + 0, queue + 1, queue + 2) > 1e-5 || !USE_TRESHOLD)
+        if (herons_area_p(queue + 0, queue + 1, queue + 2) > 1e-5)
             res += linearize_qbezier(queue, dst ? dst + res : NULL, quality);
     }
 
@@ -1772,7 +1770,6 @@ static int linearize_contour(ttf_point_t *src, ttf_point_t *dst, int src_count, 
 static int ttf_fix_linear_bags(ttf_point_t *pt, int count)
 {
     int i, n;
-if (!USE_TRESHOLD) return count;
     if (count < 3) return 0;
     n = 1;
     for (i = 1; i < count - 1; i++)
@@ -2498,16 +2495,6 @@ static __inline mes_t *find_edge(mvs_t *v1, mvs_t *v2)
     return NULL;
 }
 
-static __inline mvs_t *opposite(mts_t *t, mes_t *e)
-{
-    mvs_t *v1 = EDGES_COMMON_VERT(t->edge[0], t->edge[1]);
-    mvs_t *v2 = EDGES_COMMON_VERT(t->edge[1], t->edge[2]);
-    mvs_t *v3 = EDGES_COMMON_VERT(t->edge[2], t->edge[0]);
-    if (!EDGE_HAS_VERT(e, v1)) return v1;
-    if (!EDGE_HAS_VERT(e, v2)) return v2;
-    return v3;
-}
-
 /**
  * @brief Проверяет, есть ли у двух отрезков хотя бы одна общая точка
  *
@@ -2638,10 +2625,10 @@ int is_convex_quad(const mvs_t *A, const mvs_t *B, const mvs_t *C, const mvs_t *
     z[1] = VECCROSS(v[1], v[2]);
     z[2] = VECCROSS(v[2], v[3]);
     z[3] = VECCROSS(v[3], v[0]);
-    if (z[0] * z[1] <= EPSILON) return 0;
-    if (z[1] * z[2] <= EPSILON) return 0;
-    if (z[2] * z[3] <= EPSILON) return 0;
-    if (z[3] * z[0] <= EPSILON) return 0;
+    if (z[0] * z[1] <= 0.0f) return 0;
+    if (z[1] * z[2] <= 0.0f) return 0;
+    if (z[2] * z[3] <= 0.0f) return 0;
+    if (z[3] * z[0] <= 0.0f) return 0;
     return 1;
 }
 
@@ -2766,14 +2753,6 @@ int optimize(mesher_t *m, mes_t *e, int deep)
     optimize(m, TRI_THIRD_EDGE(e->tr[0], e), deep);
     optimize(m, TRI_THIRD_EDGE(e->tr[1], e), deep);
     return MESHER_DONE;
-}
-
-static inline bool is_the_same_triangle(const mts_t *t, const mes_t *e1, const mes_t *e2, const mes_t *e3)
-{
-    if (t->edge[0] != e1 && t->edge[1] != e1 && t->edge[2] != e1) return false;
-    if (t->edge[0] != e2 && t->edge[1] != e2 && t->edge[2] != e2) return false;
-    if (t->edge[0] != e3 && t->edge[1] != e3 && t->edge[2] != e3) return false;
-    return true;
 }
 
 static int find_triangles_track(mesher_t *m, mvs_t *v1, mvs_t *v2, mes_t *root)
@@ -3481,12 +3460,12 @@ int mesher(mesher_t *m, int deep)
         res = handle_constraints(m, object);
         if (res != MESHER_DONE) return res;
 
-        /* Оптимизация сетки */
-        res = optimize_all(m, deep, object);
-        if (res != MESHER_DONE) return res;
-
         /* Удаление лишних треугольников */
         res = remove_excess_triangles(m);
+        if (res != MESHER_DONE) return res;
+
+        /* Оптимизация сетки */
+        res = optimize_all(m, deep, object);
         if (res != MESHER_DONE) return res;
     }
     return MESHER_DONE;

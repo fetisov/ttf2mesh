@@ -96,7 +96,7 @@
       </item>
      </layout>
     </item>
-    <item row="3" column="0" colspan="2">
+    <item row="2" column="0" colspan="2">
      <widget class="QTabWidget" name="tabWidget">
       <property name="currentIndex">
        <number>1</number>
@@ -502,13 +502,6 @@
         </item>
        </layout>
       </widget>
-     </widget>
-    </item>
-    <item row="2" column="0">
-     <widget class="QCheckBox" name="USE_TRESHOLD">
-      <property name="text">
-       <string>USE_TRESHOLD</string>
-      </property>
      </widget>
     </item>
    </layout>
@@ -960,22 +953,6 @@
     <hint type="sourcelabel">
      <x>510</x>
      <y>154</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>345</x>
-     <y>315</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>USE_TRESHOLD</sender>
-   <signal>toggled(bool)</signal>
-   <receiver>MainWindow</receiver>
-   <slot>updateUi()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>175</x>
-     <y>115</y>
     </hint>
     <hint type="destinationlabel">
      <x>345</x>

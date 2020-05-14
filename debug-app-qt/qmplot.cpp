@@ -1254,6 +1254,13 @@ QMWidget::QMWidget(QWidget *parent) :
     qmwidgets.push_front(this);
     legend.setBindingCorner(Qt::TopRightCorner);
     legend.setBindingPosition(QPoint(15, 15));
+
+    QSurfaceFormat format;
+    format.setDepthBufferSize(24);
+    format.setStencilBufferSize(8);
+    format.setSamples(32);
+    format.setProfile(QSurfaceFormat::CoreProfile);
+    setFormat(format);
 }
 
 QMWidget::~QMWidget()

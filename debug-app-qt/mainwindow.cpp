@@ -778,13 +778,13 @@ void MainWindow::updateFontInfo()
 {
     if (ttf == NULL)
     {
-        ui->fontFile->setText("");
         ui->fontInfo->setText("");
         return;
     }
     int index = ui->fonts->currentIndex();
-    ui->fontInfo->setText(QString("<b>font</b> %1 from %2, <b>full name</b> %3, <b>version</b> %4, <b>glyphs</b> %5<br>"
-                                  "<b>family</b> %6, <b>subfamily</b> %7")
+    ui->fontInfo->setText(QString("<b>font file</b> %1<br><b>font</b> %2 from %3, <b>full name</b> %4, <b>version</b> %5, <b>glyphs</b> %6<br>"
+                                  "<b>family</b> %7, <b>subfamily</b> %8")
+                                        .arg(ttf->filename)
                                         .arg(index + 1)
                                         .arg(ui->fonts->count())
                                         .arg(ttf->info.full_name)
@@ -792,7 +792,6 @@ void MainWindow::updateFontInfo()
                                         .arg(ttf->nglyphs)
                                         .arg(ttf->info.family)
                                         .arg(ttf->info.subfamily));
-    ui->fontFile->setText(QString("<b>file name</b> %1").arg(ttf->filename));
 }
 
 void MainWindow::updateUi()

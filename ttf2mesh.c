@@ -536,7 +536,7 @@ int parse_simple_glyph(ttf_glyph_t *glyph, int glyph_index, uint8_t *p, int avai
             {
                 rep--;
             }
-            glyph->outline->cont[i].pt[j].onc = flag & ON_CURVE_POINT;
+            glyph->outline->cont[i].pt[j].onc = (flag & ON_CURVE_POINT) != 0;
             glyph->outline->cont[i].pt[j].res = flag;
         }
 
@@ -722,6 +722,8 @@ int parse_composite_glyph(ttf_t *ttf, ttf_glyph_t *glyph, uint8_t *p, int avail)
     glyph->outline = allocate_ttf_outline(glyph->ncontours, glyph->npoints);
     if (glyph->outline == NULL) return TTF_ERR_NOMEM;
 
+    /* initialize other glyph fields */
+    glyph->composite = 1;
     glyph->xbounds[0] = hdr.xMin;
     glyph->xbounds[1] = hdr.xMax;
     glyph->ybounds[0] = hdr.yMin;
@@ -892,7 +894,7 @@ static int parse_hmtx_table(ttf_t *ttf, pps_t *pp)
         ttf->glyphs[i].advance = adv;
         ttf->glyphs[i].lbearing = lsb;
     }
-    for (i = 0; i < ttf->nglyphs - (int)pp->phhea->numberOfHMetrics; i++)
+    for (; i < ttf->nglyphs; i++)
     {
         lsb = (int16_t)big16toh(*p++);
         ttf->glyphs[i].advance = adv;

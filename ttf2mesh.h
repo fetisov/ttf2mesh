@@ -140,7 +140,7 @@ struct ttf_file
     {
         float ascender;           /* Typographic ascent (Distance from baseline of highest ascender) */
         float descender;          /* Typographic descent (Distance from baseline of lowest descender) */
-        float lineGap;            /* Typographic line gap */
+        float lineGap;            /* Typographic line gap (Distance from line1 descender to line2 ascender) */
         float advanceWidthMax;    /* Maximum advance width value */
         float minLSideBearing;    /* Minimum left sidebearing value */
         float minRSideBearing;    /* Minimum right sidebearing value; calculated as Min(aw - lsb - (xMax - xMin)). */
@@ -160,6 +160,8 @@ struct ttf_glyph
     int symbol;                   /* utf-16 symbol */
     int npoints;                  /* total points within all contours */
     int ncontours;                /* number of contours in outline */
+    uint32_t composite : 1;       /* it is composite glyph */
+    uint32_t : 31;                /* reserved flags */
 
     /* horizontal glyph metrics */
     /* see https://docs.microsoft.com/en-us/typography/opentype/spec/hmtx */
@@ -200,7 +202,7 @@ struct ttf_point
     float y;                      /* point y coordinate in EM */
     uint32_t spl : 1;             /* point of spliting process */
     uint32_t onc : 1;             /* point on curve */
-    uint32_t res: 30;             /* reserved for internal use */
+    uint32_t res : 30;            /* reserved for internal use */
 };
 
 /**

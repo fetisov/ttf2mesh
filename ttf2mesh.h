@@ -229,7 +229,7 @@ ttf_t **ttf_list_system_fonts(void);
  * @brief Translate unicode character to glyph index in font object
  * @param ttf Pointer to font object
  * @param utf16_char Unicode character
- * @return Glyph index in glyphs array
+ * @return Glyph index in glyphs array or -1
  */
 int ttf_find_glyph(const ttf_t *ttf, uint16_t utf16_char);
 

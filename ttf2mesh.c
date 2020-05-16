@@ -1181,7 +1181,7 @@ static bool parse_name(ttf_t *ttf, uint8_t *tab, int tabsize)
     return true;
 }
 
-ttf_t *allocate_ttf_structure(int nglyphs, bool headers_only)
+static ttf_t *allocate_ttf_structure(int nglyphs, bool headers_only)
 {
     ttf_t *res;
     if (headers_only)
@@ -1197,12 +1197,14 @@ ttf_t *allocate_ttf_structure(int nglyphs, bool headers_only)
     return res;
 }
 
-void ttf_prepare_to_output(ttf_t *ttf, pps_t *pps)
+static void ttf_prepare_to_output(ttf_t *ttf, pps_t *pps)
 {
     int i, j, k;
     ttf_glyph_t *g;
     ttf_point_t *p;
     float scale;
+
+    /* convert font metrics to em unit */
     scale = 1.0f / big16toh(pps->phead->unitsPerEm);
     for (i = 0; i < ttf->nglyphs; i++)
     {
@@ -1223,6 +1225,24 @@ void ttf_prepare_to_output(ttf_t *ttf, pps_t *pps)
                 p[k].y *= scale;
             }
         }
+    }
+
+    /* sorting the chars array to guarantee the ttf_find_glyph */
+    i = 1;
+    j = 1;
+    while (i < ttf->nchars)
+    {
+        if (ttf->chars[i] >= ttf->chars[i - 1])
+        {
+            i = j > i ? j : i + 1;
+            continue;
+        }
+        /* have a descend sequence! */
+        /* it is very strange font... */
+        j = i;
+        SWAP(uint16_t, ttf->chars[i], ttf->chars[i - 1]);
+        SWAP(uint16_t, ttf->char2glyph[i], ttf->char2glyph[i - 1]);
+        i = i == 1 ? j : i - 1;
     }
 }
 
@@ -1578,36 +1598,31 @@ ttf_t **ttf_list_system_fonts(void)
 
 int ttf_find_glyph(const ttf_t *ttf, uint16_t utf16)
 {
-    int i;
-    /* todo: half division! */
-    for (i = 0; i < ttf->nchars; i++)
-        if (utf16 == ttf->chars[i])
-            return ttf->char2glyph[i];
+    if (ttf->nchars == 0) return -1;
+    if (ttf->nchars == 1) return ttf->chars[0] == utf16 ? 0 : -1;
+
+    /* range half division algorithm */
+    /* searching with O(log2(N)) */
+
+    int lsi = 0; /* left side index */
+    int rsi = ttf->nchars - 1; /* right side index */
+
+    /* trivial cases */
+    if (ttf->chars[lsi] == utf16) return ttf->char2glyph[lsi];
+    if (ttf->chars[rsi] == utf16) return ttf->char2glyph[rsi];
+
+    /* loop */
+    while (rsi - lsi > 1)
+    {
+        int mid = (lsi + rsi) / 2;
+        if (ttf->chars[mid] == utf16)
+            return ttf->char2glyph[mid];
+        if (ttf->chars[mid] > utf16)
+            rsi = mid; else
+            lsi = mid;
+    }
     return -1;
 }
-
-/*
-static int linearize_qbezier(ttf_point_t curve[3], ttf_point_t *dst, uint8_t quality)
-{
-    int i;
-    for (i = 0; i < quality && dst; i++)
-    {
-        float step, t, tt;
-        step = 1.0f / ((int)quality + 1);
-        t = step * (i + 1);
-        tt = 1.0f - t;
-
-        dst[i].x = tt * tt * curve[0].x +
-                   2.0f * t * tt * curve[1].x +
-                   t * t * curve[2].x;
-
-        dst[i].y = tt * tt * curve[0].y +
-                   2.0f * t * tt * curve[1].y +
-                   t * t * curve[2].y;
-    }
-    return quality;
-}
-*/
 
 /**
  * @brief Расчёт координаты кривой Безье

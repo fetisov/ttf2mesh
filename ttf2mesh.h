@@ -22,6 +22,19 @@
  * SOFTWARE.
  */
 
+/*
+    Release 1.0 (initial)
+    Release date: May 16, 2020
+    Major Changes in this Release:
+        New Features and Improvements:
+            - TrueType fonts support. No OpenType. No vertical fonts support.
+            - Tessellator uses the V. Domiter & B. Žalik Sweep‐line algorithm modification
+        Non-Backwards Compatible Changes:
+            -
+        Bug fixes:
+            -
+*/
+
 #ifndef TTF2MESH_H
 #define TTF2MESH_H
 
@@ -84,6 +97,7 @@ struct ttf_file
     ttf_glyph_t *glyphs;          /* array of the font glyphs with nglyphs length */
     const char *filename;         /* full path and file name of the font */
     uint32_t glyf_csum;           /* 'glyf' table checksum (used by ttf_list_fonts) */
+
     struct
     {
         /* fields of head table */
@@ -99,6 +113,7 @@ struct ttf_file
             uint8_t condensed: 1; /* Condensed */
             uint8_t extended: 1;  /* Extended */
         } macStyle;
+
         /* fields of name table */
         /* https://docs.microsoft.com/ru-ru/typography/opentype/spec/name */
         const char *copyright;    /* Copyright notice */
@@ -118,6 +133,20 @@ struct ttf_file
         const char *locense_url;  /* License Info URL */
         const char *sample_text;  /* Sample text */
     } info;
+
+    /* fields of hhea table (information for horizontal layout) */
+    /* https://docs.microsoft.com/en-us/typography/opentype/spec/hhea */
+    struct
+    {
+        float ascender;           /* Typographic ascent (Distance from baseline of highest ascender) */
+        float descender;          /* Typographic descent (Distance from baseline of lowest descender) */
+        float lineGap;            /* Typographic line gap */
+        float advanceWidthMax;    /* Maximum advance width value */
+        float minLSideBearing;    /* Minimum left sidebearing value */
+        float minRSideBearing;    /* Minimum right sidebearing value; calculated as Min(aw - lsb - (xMax - xMin)). */
+        float xMaxExtent;         /* Max(lsb + (xMax - xMin)) */
+        float caretSlope;         /* The slope of the cursor in radians, ~0 for horizontal not italic font and ~0.2 for italic font */
+    } hhea;
 };
 
 /**
@@ -125,15 +154,24 @@ struct ttf_file
  */
 struct ttf_glyph
 {
+    /* general fields */
+
     int index;                    /* glyph index in font */
     int symbol;                   /* utf-16 symbol */
     int npoints;                  /* total points within all contours */
     int ncontours;                /* number of contours in outline */
+
+    /* horizontal glyph metrics */
+    /* see https://docs.microsoft.com/en-us/typography/opentype/spec/hmtx */
+
     float xbounds[2];             /* min/max values ​​along the x coordinate */
     float ybounds[2];             /* min/max values ​​along the y coordinate */
     float advance;                /* advance width */
     float lbearing;               /* left side bearing */
     float rbearing;               /* right side bearing = aw - (lsb + xMax - xMin) */
+
+    /* glyph outline */
+
     ttf_outline_t *outline;       /* original outline of the glyph or NULL */
 };
 

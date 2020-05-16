@@ -898,6 +898,19 @@ static int parse_hmtx_table(ttf_t *ttf, pps_t *pp)
         ttf->glyphs[i].advance = adv;
         ttf->glyphs[i].lbearing = lsb;
     }
+
+    ttf->hhea.ascender = pp->phhea->ascender;
+    ttf->hhea.descender = pp->phhea->descender;
+    ttf->hhea.lineGap = pp->phhea->lineGap;
+    ttf->hhea.advanceWidthMax = pp->phhea->advanceWidthMax;
+    ttf->hhea.minLSideBearing = pp->phhea->minLeftSideBearing;
+    ttf->hhea.minRSideBearing = pp->phhea->minRightSideBearing;
+    ttf->hhea.xMaxExtent = pp->phhea->xMaxExtent;
+
+    /* caret slope calculation */
+    /* see https://developer.apple.com/fonts/TrueType-Reference-Manual/RM06/Chap6hhea.html */
+    ttf->hhea.caretSlope = atan2(pp->phhea->caretSlopeRun, pp->phhea->caretSlopeRise);
+
     return TTF_DONE;
 }
 
@@ -1205,7 +1218,8 @@ static void ttf_prepare_to_output(ttf_t *ttf, pps_t *pps)
     float scale;
 
     /* convert font metrics to em unit */
-    scale = 1.0f / big16toh(pps->phead->unitsPerEm);
+    scale = pps->phead->unitsPerEm == 0 ? 0.0f :
+        1.0f / big16toh(pps->phead->unitsPerEm);
     for (i = 0; i < ttf->nglyphs; i++)
     {
         g = ttf->glyphs + i;
@@ -1226,6 +1240,13 @@ static void ttf_prepare_to_output(ttf_t *ttf, pps_t *pps)
             }
         }
     }
+    ttf->hhea.ascender *= scale;
+    ttf->hhea.descender *= scale;
+    ttf->hhea.lineGap *= scale;
+    ttf->hhea.advanceWidthMax *= scale;
+    ttf->hhea.minLSideBearing *= scale;
+    ttf->hhea.minRSideBearing *= scale;
+    ttf->hhea.xMaxExtent *= scale;
 
     /* sorting the chars array to guarantee the ttf_find_glyph */
     i = 1;

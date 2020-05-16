@@ -972,7 +972,7 @@ static int ttf_extract_tables(const uint8_t *data, int size, pps_t *s)
     */
 
     if (s->shead == 0 || s->smaxp == 0 || s->sloca == 0 || s->scmap == 0 || s->sglyf == 0 || s->sname == 0 || s->shhea == 0)
-        return TTF_ERR_FMT;
+        return TTF_ERR_NOTAB;
 
     return 0;
 }
@@ -1894,7 +1894,7 @@ static int ttf_glyph2svgpath_impl(ttf_outline_t *o, char *s, int len)
     res = 0;
 
     FIX();
-    n = snprintf(s, len, "<path style=\"fill-rule:evenodd\" d=\""); APPLY();
+    n = snprintf(s, len, "<path style=\"fill-rule:nonzero\" d=\""); APPLY();
 
     for (i = 0; i < o->ncontours; i++)
     {

@@ -4,6 +4,7 @@
 #include <QMainWindow>
 #include <QMessageBox>
 #include <QScrollArea>
+#include <QComboBox>
 #include <QLayout>
 #include <QTime>
 #include <QFileDialog>
@@ -19,6 +20,30 @@ class MainWindow;
 }
 
 class FontTest;
+
+class MatchingArg: public QWidget
+{
+    Q_OBJECT
+public:
+    MatchingArg(QWidget *parent);
+    void setType(char type);
+    bool has_arg();
+    size_t get_arg();
+
+signals:
+    void chanded();
+
+private:
+    int type;
+    QByteArray buff;
+    QLabel *title;
+    QComboBox *weights;
+    QLineEdit *family;
+    QLineEdit *text;
+
+private slots:
+    void edited();
+};
 
 class MainWindow : public QMainWindow
 {
@@ -46,6 +71,7 @@ private:
     ttf_t **fonts;
     ttf_t *ttf;
     ttf_glyph_t *g;
+    MatchingArg *args[32];
     Ui::MainWindow *ui;
     int lastSelectedUtf;
     void setupFontList();
@@ -54,6 +80,7 @@ private:
     void updateCurvesPlot();
     void updateDebugPage();
     void updateTextPage();
+    void updateMatchingPage();
     void applyTestResults(FontTest *t);
 };
 

@@ -23,9 +23,18 @@
  */
 
 /*
-    Release 1.0 (initial)
-    Release date: May 16, 2020
-    Major Changes in this Release:
+    Release 1.1 (May 18, 2020)
+        New Features and Improvements:
+            - ubranges variable that lists the unicode BMP ranges was added
+            - ttf_t::ubranges bit map lists the presented utf16 ranges in font
+            - ttf_list_match function was added for fonts matching
+            - reading of OS/2 table
+        Non-Backwards Compatible Changes:
+            - ttf_t::info struct was removed, see ttf_t::names and ttf_t::head instead
+        Bug fixes:
+            - The ttf_t::info::macStyle structure was not filled before
+
+    Initial release 1.0 (May 16, 2020)
         New Features and Improvements:
             - TrueType fonts support. No OpenType. No vertical fonts support.
             - Tessellator uses the V. Domiter & B. Žalik Sweep‐line algorithm modification
@@ -41,6 +50,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <stdarg.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -65,6 +75,18 @@ extern "C" {
 #define TTF_ERR_NO_OUTLINE 10     /* glyph has no outline */
 #define TTF_ERR_WRITING    11     /* error writing file */
 
+/* definitions for ttf_list_match function */
+
+#define TTF_WEIGHT_THIN       100 /*  */
+#define TTF_WEIGHT_EXTRALIGHT 200
+#define TTF_WEIGHT_LIGHT      300
+#define TTF_WEIGHT_NORMAL     400
+#define TTF_WEIGHT_MEDIUM     500
+#define TTF_WEIGHT_DEMIBOLD   600
+#define TTF_WEIGHT_BOLD       700
+#define TTF_WEIGHT_EXTRABOLD  800
+#define TTF_WEIGHT_BLACK      900
+
 /* flags and values passing to some function */
 
 #define TTF_QUALITY_LOW    10     /* default quality value for some functions */
@@ -76,11 +98,12 @@ extern "C" {
 
 /* all library types */
 
-typedef struct ttf_file    ttf_t;
-typedef struct ttf_glyph   ttf_glyph_t;
-typedef struct ttf_outline ttf_outline_t;
-typedef struct ttf_point   ttf_point_t;
-typedef struct ttf_mesh    ttf_mesh_t;
+typedef struct ttf_file          ttf_t;
+typedef struct ttf_glyph         ttf_glyph_t;
+typedef struct ttf_outline       ttf_outline_t;
+typedef struct ttf_point         ttf_point_t;
+typedef struct ttf_mesh          ttf_mesh_t;
+typedef struct unicode_bmp_range ubrange_t;
 
 /**
  * @brief Loaded font structure
@@ -97,10 +120,13 @@ struct ttf_file
     ttf_glyph_t *glyphs;          /* array of the font glyphs with nglyphs length */
     const char *filename;         /* full path and file name of the font */
     uint32_t glyf_csum;           /* 'glyf' table checksum (used by ttf_list_fonts) */
+    uint32_t ubranges[6];         /* bit map of presented utf16 ranges in font. LSB of word 0
+                                   * means that font has a symbols in unicode range #0. All
+                                   * ranges are listed in global variable ubranges[] */
 
+    /* unpacked fields of "head" table */
     struct
     {
-        /* fields of head table */
         /* https://docs.microsoft.com/ru-ru/typography/opentype/spec/head */
         float rev;                /* Font revision, set by manufacturer */
         struct
@@ -113,8 +139,41 @@ struct ttf_file
             uint8_t condensed: 1; /* Condensed */
             uint8_t extended: 1;  /* Extended */
         } macStyle;
+    } head;
 
-        /* fields of name table */
+    /* unpacked fields of "OS/2" table (OS/2 and Windows Metrics Table) */
+    /* https://docs.microsoft.com/en-us/typography/opentype/spec/os2 */
+    struct
+    {
+        float xAvgCharWidth;        /* Average weighted escapement */
+        uint16_t usWeightClass;     /* Weight class, see TTF_WEIGHT_XXX */
+        uint16_t usWidthClass;      /* 1 Ultra-condensed; 2 Extra-condensed; Condensed; Semi-condensed; Medium (normal); Semi-expanded; Expanded; Extra-expanded; Ultra-expanded */
+        float yStrikeoutSize;       /* Thickness of the strikeout stroke */
+        float yStrikeoutPos;        /* The position of the top of the strikeout stroke relative to the baseline */
+        int16_t sFamilyClass;       /* Font-family class and subclass. Classification of font-family design. https://docs.microsoft.com/en-us/typography/opentype/spec/ibmfc */
+        uint8_t panose[10];         /* PANOSE classification number, https://monotype.github.io/panose/ */
+        struct
+        {
+            uint16_t italic : 1;    /* Font contains italic or oblique glyphs, otherwise they are upright */
+            uint16_t underscore: 1; /* glyphs are underscored */
+            uint16_t negative : 1;  /* glyphs have their foreground and background reversed */
+            uint16_t outlined : 1;  /* Outline (hollow) glyphs, otherwise they are solid */
+            uint16_t strikeout: 1;  /* glyphs are overstruck */
+            uint16_t bold: 1;       /* glyphs are emboldened */
+            uint16_t regular: 1;    /* glyphs are in the standard weight/style for the font */
+            uint16_t utm: 1;        /* USE_TYPO_METRICS, If set, it is strongly recommended to use OS/2.sTypoAscender - OS/2.sTypoDescender + OS/2.sTypoLineGap as the default line spacing */
+            uint16_t oblique: 1;    /* Font contains oblique glyphs */
+        } fsSelection;              /* Font selection flags */
+        float sTypoAscender;        /* The typographic ascender for this font */
+        float sTypoDescender;       /* The typographic descender for this font */
+        float sTypoLineGap;         /* The typographic line gap for this font */
+        float usWinAscent;          /* The “Windows ascender” metric. This should be used to specify the height above the baseline for a clipping region */
+        float usWinDescent;         /* The “Windows descender” metric. This should be used to specify the vertical extent below the baseline for a clipping region */
+    } os2;
+
+    struct
+    {
+        /* unpacked fields of "name" table */
         /* https://docs.microsoft.com/ru-ru/typography/opentype/spec/name */
         const char *copyright;    /* Copyright notice */
         const char *family;       /* Font Family name */
@@ -132,9 +191,9 @@ struct ttf_file
         const char *license_desc; /* License Description */
         const char *locense_url;  /* License Info URL */
         const char *sample_text;  /* Sample text */
-    } info;
+    } names;
 
-    /* fields of hhea table (information for horizontal layout) */
+    /* unpacked fields of "hhea" table (information for horizontal layout) */
     /* https://docs.microsoft.com/en-us/typography/opentype/spec/hhea */
     struct
     {
@@ -227,6 +286,18 @@ struct ttf_mesh
 };
 
 /**
+ * @brief The Unicode Basic Multilingual Plane range struct
+ */
+struct unicode_bmp_range
+{
+    uint16_t first;   /* first code in range */
+    uint16_t last;    /* last code in range */
+    const char *name; /* range name */
+};
+
+extern const ubrange_t ubranges[163];
+
+/**
  * @brief Load a font from memory
  * @param data Data pointer
  * @param size Data size
@@ -264,6 +335,50 @@ ttf_t **ttf_list_fonts(const char **directories, int dir_count);
  * After using the list, you need to free it with ttf_free_list function.
  */
 ttf_t **ttf_list_system_fonts(void);
+
+/**
+ * @brief Matching font from list
+ * @param list NULL-terminated array of references to ttf_t objects
+ * @param deflt Default font
+ * @param requirements Requirements string
+ * @return Matched font from \a list or \a deflt value if no font matched
+ *
+ * The function allows to find a font from a list with arbitrary requirements.
+ * The \a requirements parameter sets the criteria and priority of the search.
+ * Depending on the value of the \a requirements parameter, the function takes
+ * a different number of arguments.
+ *
+ * For example, the following call allows you to find the bold version of
+ * "Courier" or "Courier New" font:
+ *
+ *     ttf_list_match(list, "fb", "Courier")
+ *
+ * The following call forces to search any italic font that guarantees the
+ * representation of the specified utf16-string. In addition, two preferred
+ * fonts are specified (The "Times" has a higher priority than the "Courier"):
+ *
+ *     ttf_list_match(list, "t!i!ff", L"The number π", "Times", "Courier")
+ *
+ * The following table lists the modifiers that passing in \a requirements parameter.
+ *
+ * |modifier | argument type  |  description                                                    |
+ * |---------|----------------|-----------------------------------------------------------------|
+ * | b       | -              | forces to search the bold font                                  |
+ * | i       | -              | forces to search the italic font                                |
+ * | h       | -              | forces to search the font with hollow glyps                     |
+ * | o       | -              | forces to search the oblique font                               |
+ * | r       | -              | forces to search the regular font (default modifier)            |
+ * | w       | TTF_WEIGHT_XXX | forces to search the font with specified weight                 |
+ * | f       | char *family   | forces to search the font with specified family name            |
+ * | t       | uint16_t *text | forces to search the font that can represent the specified text |
+ * | !       | -              | forces to search for an exact match by the previous modifier    |
+ *
+ * A few notes on the proper use of ttf_list_match:
+ * - No more than 32 modifiers are allowed.
+ * - Position of any modifier with the '!' suffix in string does not matter.
+ * - The "r!" and "b!" requirements are incompatible.
+ */
+ttf_t *ttf_list_match(ttf_t **list, ttf_t *deflt, const char *requirements, ...);
 
 /**
  * @brief Translate unicode character to glyph index in font object

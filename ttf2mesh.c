@@ -237,18 +237,7 @@ typedef struct ttf_head_table
     int16_t  yMin;               /* For all glyph bounding boxes */
     int16_t  xMax;               /* For all glyph bounding boxes */
     int16_t  yMax;               /* For all glyph bounding boxes */
-    struct
-    {
-        uint8_t bold : 1;
-        uint8_t italic : 1;
-        uint8_t underline : 1;
-        uint8_t outline : 1;
-        uint8_t shadow : 1;
-        uint8_t condensed : 1;
-        uint8_t extended : 1;
-        uint8_t : 1;
-        uint8_t : 8;
-    } macStyle;
+    uint16_t macStyle;
     uint16_t lowestRecPPEM;      /* Smallest readable size in pixels */
     int16_t fontDirectionHint;   /* Deprecated (Set to 2) */
     int16_t indexToLocFormat;    /* 0 for short offsets (Offset16), 1 for long (Offset32) */
@@ -326,6 +315,39 @@ typedef struct ttf_hhea_table
     uint16_t numberOfHMetrics;    /* Number of hMetric entries in 'hmtx' table */
 } ttf_hhea_t;
 
+/* https://docs.microsoft.com/en-us/typography/opentype/spec/os2 */
+/* see description in ttf_t definition */
+typedef struct ttf_os2_table
+{
+    uint16_t version;
+    int16_t  xAvgCharWidth;
+    uint16_t usWeightClass;
+    uint16_t usWidthClass;
+    uint16_t fsType;
+    int16_t  ySubscriptXSize;
+    int16_t  ySubscriptYSize;
+    int16_t  ySubscriptXOffset;
+    int16_t  ySubscriptYOffset;
+    int16_t  ySuperscriptXSize;
+    int16_t  ySuperscriptYSize;
+    int16_t  ySuperscriptXOffset;
+    int16_t  ySuperscriptYOffset;
+    int16_t  yStrikeoutSize;
+    int16_t  yStrikeoutPosition;
+    int16_t  sFamilyClass;
+    uint8_t  panose[10];
+    uint8_t  ulUnicodeRange[16];
+    char     achVendID[4];
+    uint16_t fsSelection;
+    uint16_t usFirstCharIndex;
+    uint16_t usLastCharIndex;
+    int16_t  sTypoAscender;
+    int16_t  sTypoDescender;
+    int16_t  sTypoLineGap;
+    uint16_t usWinAscent;
+    uint16_t usWinDescent;
+} ttf_os2_t;
+
 #pragma pack(pop)
 
 /* ------------------- Parser private structure ------------------ */
@@ -334,8 +356,10 @@ typedef struct ttf_parser_private_struct
 {
     ttf_file_hdr_t *hdr;
     ttf_head_t *phead;
+    ttf_os2_t *pos2;
     ttf_maxp_t *pmaxp;
     ttf_cmap_t *pcmap;
+    ttf_fmt4_t *pfmt4;
     ttf_name_t *pname;
     ttf_hhea_t *phhea;
     uint16_t *phmtx;
@@ -344,9 +368,11 @@ typedef struct ttf_parser_private_struct
     uint16_t *ploca16;
     uint32_t *ploca32;
     int shead;
+    int sos2;
     int smaxp;
     int sloca;
     int scmap;
+    int sfmt4;
     int sname;
     int shhea;
     int shmtx;
@@ -363,6 +389,173 @@ typedef struct ttf_parser_private_struct
 /******************************************************************************/
 /******************************************************************************/
 /******************************************************************************/
+
+const ubrange_t ubranges[163] =
+{
+    {0x0000, 0x007F, "Basic Latin"},
+    {0x0080, 0x00FF, "Latin-1 Supplement"},
+    {0x0100, 0x017F, "Latin Extended-A"},
+    {0x0180, 0x024F, "Latin Extended-B"},
+    {0x0250, 0x02AF, "IPA Extensions"},
+    {0x02B0, 0x02FF, "Spacing Modifier Letters"},
+    {0x0300, 0x036F, "Combining Diacritical Marks"},
+    {0x0370, 0x03FF, "Greek and Coptic"},
+    {0x0400, 0x04FF, "Cyrillic"},
+    {0x0500, 0x052F, "Cyrillic Supplement"},
+    {0x0530, 0x058F, "Armenian"},
+    {0x0590, 0x05FF, "Hebrew"},
+    {0x0600, 0x06FF, "Arabic"},
+    {0x0700, 0x074F, "Syriac"},
+    {0x0750, 0x077F, "Arabic Supplement"},
+    {0x0780, 0x07BF, "Thaana"},
+    {0x07C0, 0x07FF, "NKo"},
+    {0x0800, 0x083F, "Samaritan"},
+    {0x0840, 0x085F, "Mandaic"},
+    {0x0860, 0x086F, "Syriac Supplement"},
+    {0x08A0, 0x08FF, "Arabic Extended-A"},
+    {0x0900, 0x097F, "Devanagari"},
+    {0x0980, 0x09FF, "Bengali"},
+    {0x0A00, 0x0A7F, "Gurmukhi"},
+    {0x0A80, 0x0AFF, "Gujarati"},
+    {0x0B00, 0x0B7F, "Oriya"},
+    {0x0B80, 0x0BFF, "Tamil"},
+    {0x0C00, 0x0C7F, "Telugu"},
+    {0x0C80, 0x0CFF, "Kannada"},
+    {0x0D00, 0x0D7F, "Malayalam"},
+    {0x0D80, 0x0DFF, "Sinhala"},
+    {0x0E00, 0x0E7F, "Thai"},
+    {0x0E80, 0x0EFF, "Lao"},
+    {0x0F00, 0x0FFF, "Tibetan"},
+    {0x1000, 0x109F, "Myanmar"},
+    {0x10A0, 0x10FF, "Georgian"},
+    {0x1100, 0x11FF, "Hangul Jamo"},
+    {0x1200, 0x137F, "Ethiopic"},
+    {0x1380, 0x139F, "Ethiopic Supplement"},
+    {0x13A0, 0x13FF, "Cherokee"},
+    {0x1400, 0x167F, "Unified Canadian Aboriginal Syllabics"},
+    {0x1680, 0x169F, "Ogham"},
+    {0x16A0, 0x16FF, "Runic"},
+    {0x1700, 0x171F, "Tagalog"},
+    {0x1720, 0x173F, "Hanunoo"},
+    {0x1740, 0x175F, "Buhid"},
+    {0x1760, 0x177F, "Tagbanwa"},
+    {0x1780, 0x17FF, "Khmer"},
+    {0x1800, 0x18AF, "Mongolian"},
+    {0x18B0, 0x18FF, "Unified Canadian Aboriginal Syllabics Extended"},
+    {0x1900, 0x194F, "Limbu"},
+    {0x1950, 0x197F, "Tai Le"},
+    {0x1980, 0x19DF, "New Tai Lue"},
+    {0x19E0, 0x19FF, "Khmer Symbols"},
+    {0x1A00, 0x1A1F, "Buginese"},
+    {0x1A20, 0x1AAF, "Tai Tham"},
+    {0x1AB0, 0x1AFF, "Combining Diacritical Marks Extended"},
+    {0x1B00, 0x1B7F, "Balinese"},
+    {0x1B80, 0x1BBF, "Sundanese"},
+    {0x1BC0, 0x1BFF, "Batak"},
+    {0x1C00, 0x1C4F, "Lepcha"},
+    {0x1C50, 0x1C7F, "Ol Chiki"},
+    {0x1C80, 0x1C8F, "Cyrillic Extended-C"},
+    {0x1C90, 0x1CBF, "Georgian Extended"},
+    {0x1CC0, 0x1CCF, "Sundanese Supplement"},
+    {0x1CD0, 0x1CFF, "Vedic Extensions"},
+    {0x1D00, 0x1D7F, "Phonetic Extensions"},
+    {0x1D80, 0x1DBF, "Phonetic Extensions Supplement"},
+    {0x1DC0, 0x1DFF, "Combining Diacritical Marks Supplement"},
+    {0x1E00, 0x1EFF, "Latin Extended Additional"},
+    {0x1F00, 0x1FFF, "Greek Extended"},
+    {0x2000, 0x206F, "General Punctuation"},
+    {0x2070, 0x209F, "Superscripts and Subscripts"},
+    {0x20A0, 0x20CF, "Currency Symbols"},
+    {0x20D0, 0x20FF, "Combining Diacritical Marks for Symbols"},
+    {0x2100, 0x214F, "Letterlike Symbols"},
+    {0x2150, 0x218F, "Number Forms"},
+    {0x2190, 0x21FF, "Arrows"},
+    {0x2200, 0x22FF, "Mathematical Operators"},
+    {0x2300, 0x23FF, "Miscellaneous Technical"},
+    {0x2400, 0x243F, "Control Pictures"},
+    {0x2440, 0x245F, "Optical Character Recognition"},
+    {0x2460, 0x24FF, "Enclosed Alphanumerics"},
+    {0x2500, 0x257F, "Box Drawing"},
+    {0x2580, 0x259F, "Block Elements"},
+    {0x25A0, 0x25FF, "Geometric Shapes"},
+    {0x2600, 0x26FF, "Miscellaneous Symbols"},
+    {0x2700, 0x27BF, "Dingbats"},
+    {0x27C0, 0x27EF, "Miscellaneous Mathematical Symbols-A"},
+    {0x27F0, 0x27FF, "Supplemental Arrows-A"},
+    {0x2800, 0x28FF, "Braille Patterns"},
+    {0x2900, 0x297F, "Supplemental Arrows-B"},
+    {0x2980, 0x29FF, "Miscellaneous Mathematical Symbols-B"},
+    {0x2A00, 0x2AFF, "Supplemental Mathematical Operators"},
+    {0x2B00, 0x2BFF, "Miscellaneous Symbols and Arrows"},
+    {0x2C00, 0x2C5F, "Glagolitic"},
+    {0x2C60, 0x2C7F, "Latin Extended-C"},
+    {0x2C80, 0x2CFF, "Coptic"},
+    {0x2D00, 0x2D2F, "Georgian Supplement"},
+    {0x2D30, 0x2D7F, "Tifinagh"},
+    {0x2D80, 0x2DDF, "Ethiopic Extended"},
+    {0x2DE0, 0x2DFF, "Cyrillic Extended-A"},
+    {0x2E00, 0x2E7F, "Supplemental Punctuation"},
+    {0x2E80, 0x2EFF, "CJK Radicals Supplement"},
+    {0x2F00, 0x2FDF, "Kangxi Radicals"},
+    {0x2FF0, 0x2FFF, "Ideographic Description Characters"},
+    {0x3000, 0x303F, "CJK Symbols and Punctuation"},
+    {0x3040, 0x309F, "Hiragana"},
+    {0x30A0, 0x30FF, "Katakana"},
+    {0x3100, 0x312F, "Bopomofo"},
+    {0x3130, 0x318F, "Hangul Compatibility Jamo"},
+    {0x3190, 0x319F, "Kanbun"},
+    {0x31A0, 0x31BF, "Bopomofo Extended"},
+    {0x31C0, 0x31EF, "CJK Strokes"},
+    {0x31F0, 0x31FF, "Katakana Phonetic Extensions"},
+    {0x3200, 0x32FF, "Enclosed CJK Letters and Months"},
+    {0x3300, 0x33FF, "CJK Compatibility"},
+    {0x3400, 0x4DBF, "CJK Unified Ideographs Extension A"},
+    {0x4DC0, 0x4DFF, "Yijing Hexagram Symbols"},
+    {0x4E00, 0x9FFF, "CJK Unified Ideographs"},
+    {0xA000, 0xA48F, "Yi Syllables"},
+    {0xA490, 0xA4CF, "Yi Radicals"},
+    {0xA4D0, 0xA4FF, "Lisu"},
+    {0xA500, 0xA63F, "Vai"},
+    {0xA640, 0xA69F, "Cyrillic Extended-B"},
+    {0xA6A0, 0xA6FF, "Bamum"},
+    {0xA700, 0xA71F, "Modifier Tone Letters"},
+    {0xA720, 0xA7FF, "Latin Extended-D"},
+    {0xA800, 0xA82F, "Syloti Nagri"},
+    {0xA830, 0xA83F, "Common Indic Number Forms"},
+    {0xA840, 0xA87F, "Phags-pa"},
+    {0xA880, 0xA8DF, "Saurashtra"},
+    {0xA8E0, 0xA8FF, "Devanagari Extended"},
+    {0xA900, 0xA92F, "Kayah Li"},
+    {0xA930, 0xA95F, "Rejang"},
+    {0xA960, 0xA97F, "Hangul Jamo Extended-A"},
+    {0xA980, 0xA9DF, "Javanese"},
+    {0xA9E0, 0xA9FF, "Myanmar Extended-B"},
+    {0xAA00, 0xAA5F, "Cham"},
+    {0xAA60, 0xAA7F, "Myanmar Extended-A"},
+    {0xAA80, 0xAADF, "Tai Viet"},
+    {0xAAE0, 0xAAFF, "Meetei Mayek Extensions"},
+    {0xAB00, 0xAB2F, "Ethiopic Extended-A"},
+    {0xAB30, 0xAB6F, "Latin Extended-E"},
+    {0xAB70, 0xABBF, "Cherokee Supplement"},
+    {0xABC0, 0xABFF, "Meetei Mayek"},
+    {0xAC00, 0xD7AF, "Hangul Syllables"},
+    {0xD7B0, 0xD7FF, "Hangul Jamo Extended-B"},
+    {0xD800, 0xDB7F, "High Surrogates"},
+    {0xDB80, 0xDBFF, "High Private Use Surrogates"},
+    {0xDC00, 0xDFFF, "Low Surrogates"},
+    {0xE000, 0xF8FF, "Private Use Area"},
+    {0xF900, 0xFAFF, "CJK Compatibility Ideographs"},
+    {0xFB00, 0xFB4F, "Alphabetic Presentation Forms"},
+    {0xFB50, 0xFDFF, "Arabic Presentation Forms-A"},
+    {0xFE00, 0xFE0F, "Variation Selectors"},
+    {0xFE10, 0xFE1F, "Vertical Forms"},
+    {0xFE20, 0xFE2F, "Combining Half Marks"},
+    {0xFE30, 0xFE4F, "CJK Compatibility Forms"},
+    {0xFE50, 0xFE6F, "Small Form Variants"},
+    {0xFE70, 0xFEFF, "Arabic Presentation Forms-B"},
+    {0xFF00, 0xFFEF, "Halfwidth and Fullwidth Forms"},
+    {0xFFF0, 0xFFFF, "Specials"}
+};
 
 #ifdef __cplusplus
 extern "C" {
@@ -863,6 +1056,33 @@ error:
     return result;
 }
 
+static int parse_os2_table(ttf_t *ttf, pps_t *pps)
+{
+    ttf->os2.xAvgCharWidth = (int16_t)big16toh(pps->pos2->xAvgCharWidth);
+    ttf->os2.yStrikeoutSize = (int16_t)big16toh(pps->pos2->yStrikeoutSize);
+    ttf->os2.yStrikeoutPos = (int16_t)big16toh(pps->pos2->yStrikeoutPosition);
+    ttf->os2.sTypoAscender = (int16_t)big16toh(pps->pos2->sTypoAscender);
+    ttf->os2.sTypoDescender = (int16_t)big16toh(pps->pos2->sTypoDescender);
+    ttf->os2.sTypoLineGap = (int16_t)big16toh(pps->pos2->sTypoLineGap);
+    ttf->os2.usWinAscent = big16toh(pps->pos2->usWinAscent);
+    ttf->os2.usWinDescent = big16toh(pps->pos2->usWinDescent);
+    ttf->os2.usWeightClass = big16toh(pps->pos2->usWeightClass);
+    ttf->os2.usWidthClass = big16toh(pps->pos2->usWidthClass);
+    ttf->os2.sFamilyClass = big16toh(pps->pos2->sFamilyClass);
+    uint16_t fss = big16toh(pps->pos2->fsSelection);
+    ttf->os2.fsSelection.italic = (fss & 1) != 0;
+    ttf->os2.fsSelection.underscore = (fss & 2) != 0;
+    ttf->os2.fsSelection.negative = (fss & 4) != 0;
+    ttf->os2.fsSelection.outlined = (fss & 8) != 0;
+    ttf->os2.fsSelection.strikeout = (fss & 16) != 0;
+    ttf->os2.fsSelection.bold = (fss & 32) != 0;
+    ttf->os2.fsSelection.regular = (fss & 64) != 0;
+    ttf->os2.fsSelection.utm = (fss & 128) != 0;
+    ttf->os2.fsSelection.oblique = (fss & 512) != 0;
+    memcpy(ttf->os2.panose, pps->pos2->panose, 10);
+    return TTF_DONE;
+}
+
 static int parse_hmtx_table(ttf_t *ttf, pps_t *pp)
 {
     int size, i;
@@ -911,7 +1131,7 @@ static int parse_hmtx_table(ttf_t *ttf, pps_t *pp)
 
     /* caret slope calculation */
     /* see https://developer.apple.com/fonts/TrueType-Reference-Manual/RM06/Chap6hhea.html */
-    ttf->hhea.caretSlope = atan2(pp->phhea->caretSlopeRun, pp->phhea->caretSlopeRise);
+    ttf->hhea.caretSlope = atan2f(pp->phhea->caretSlopeRun, pp->phhea->caretSlopeRise);
 
     return TTF_DONE;
 }
@@ -931,8 +1151,8 @@ static int ttf_extract_tables(const uint8_t *data, int size, pps_t *s)
     rec = (ttf_tab_rec_t *)(s->hdr + 1);
 
     #define check_tag(str) (*(uint32_t *)rec->tableTag != *(uint32_t *)str)
-    #define match(type, name) \
-    if (*(uint32_t *)rec->tableTag == *(uint32_t *)#name) \
+    #define match(type, name, str) \
+    if (*(uint32_t *)rec->tableTag == *(uint32_t *)str) \
     { \
         s->s##name = rec->length; \
         s->p##name = (type)(data + rec->offset); \
@@ -947,14 +1167,15 @@ static int ttf_extract_tables(const uint8_t *data, int size, pps_t *s)
         if (check_tag("head"))
             if (ttf_checksum(data + rec->offset, rec->length) != rec->checkSum)
                 return TTF_ERR_CSUM;
-        match(ttf_cmap_t *, cmap);
-        match(ttf_head_t *, head);
-        match(ttf_maxp_t *, maxp);
-        match(ttf_name_t *, name);
-        match(ttf_hhea_t *, hhea); /* TODO: vhea */
-        match(uint16_t *, hmtx);
-        match(uint8_t *, loca);
-        match(uint8_t *, glyf);
+        match(ttf_cmap_t *, cmap, "cmap");
+        match(ttf_head_t *, head, "head");
+        match(ttf_os2_t *, os2, "OS/2");
+        match(ttf_maxp_t *, maxp, "maxp");
+        match(ttf_name_t *, name, "name");
+        match(ttf_hhea_t *, hhea, "hhea");
+        match(uint16_t *, hmtx, "hmtx");
+        match(uint8_t *, loca, "loca");
+        match(uint8_t *, glyf, "glyf");
         if (check_tag("glyf"))
             s->glyf_csum = rec->checkSum;
         rec++;
@@ -986,13 +1207,21 @@ static int ttf_extract_tables(const uint8_t *data, int size, pps_t *s)
     'gasp' Grid-fitting/Scan-conversion (optional table)
     */
 
-    if (s->shead == 0 || s->smaxp == 0 || s->sloca == 0 || s->scmap == 0 || s->sglyf == 0 || s->sname == 0 || s->shhea == 0)
+    if (s->shead == 0 || s->sos2 == 0 || s->smaxp == 0 || s->sloca == 0 || s->scmap == 0 || s->sglyf == 0 || s->sname == 0 || s->shhea == 0)
         return TTF_ERR_NOTAB;
 
     return 0;
 }
 
-static int parse_fmt4(ttf_t *ttf, uint8_t *data, int dataSize)
+static int find_ubrange(int utf16)
+{
+    for (int i = 0; i < 163; i++)
+        if (utf16 >= ubranges[i].first && utf16 <= ubranges[i].last)
+            return i;
+    return -1;
+}
+
+static int parse_fmt4(ttf_t *ttf, uint8_t *data, int dataSize, bool headers_only)
 {
     ttf_fmt4_t *tab;
     uint16_t *endCode; /* End characterCode for each segment, last=0xFFFF */
@@ -1005,16 +1234,11 @@ static int parse_fmt4(ttf_t *ttf, uint8_t *data, int dataSize)
 
     if (dataSize < (int)sizeof(ttf_fmt4_t)) return TTF_ERR_FMT;
     tab = (ttf_fmt4_t *)data;
-    conv16(tab->format);
     conv16(tab->length);
-    conv16(tab->language);
     conv16(tab->segCountX2);
-    conv16(tab->searchRange);
-    conv16(tab->entrySelector);
-    conv16(tab->rangeShift);
     if (tab->length > dataSize)
         return TTF_ERR_FMT;
-    segCount = tab->segCountX2 / 2;
+    segCount = tab->segCountX2 / 2;   
     endCode = (uint16_t *)(tab + 1);
     startCode = (uint16_t *)(endCode + segCount + 1);
     idDelta = (int16_t *)(startCode + segCount);
@@ -1023,7 +1247,7 @@ static int parse_fmt4(ttf_t *ttf, uint8_t *data, int dataSize)
     idArrayLen = (tab->length / sizeof(uint16_t) - (glyphIdArray - (uint16_t *)data));
     if (idArrayLen < 0) return TTF_ERR_FMT;
 
-    ttf->nchars = 0;
+    k = 0;
     for (i = 0; i < segCount; i++)
     {
         conv16(endCode[i]);
@@ -1033,9 +1257,18 @@ static int parse_fmt4(ttf_t *ttf, uint8_t *data, int dataSize)
         if (i == segCount - 1 && startCode[i] != 0xFFFF)
             return TTF_ERR_FMT;
         if (startCode[i] == 0xFFFF) break;
-        ttf->nchars += endCode[i] - startCode[i] + 1;
+        for (j = startCode[i]; j <= endCode[i]; j++)
+        {
+            int range = find_ubrange(j);
+            if (range >= 0)
+                ttf->ubranges[range / 32] |= (uint32_t)1 << (range & 31);
+            k++;
+        }
     }
 
+    if (headers_only) return TTF_DONE;
+
+    ttf->nchars = k;
     ttf->chars = (uint16_t *)malloc(sizeof(uint16_t) * 2 * ttf->nchars);
     ttf->char2glyph = ttf->chars + ttf->nchars;
     k = 0;
@@ -1071,29 +1304,22 @@ static int parse_fmt4(ttf_t *ttf, uint8_t *data, int dataSize)
     return TTF_DONE;
 }
 
-static int parse_cmap(ttf_t *ttf, uint8_t *tab, int tabsize)
+static int locate_fmt4_table(pps_t *s)
 {
     int i;
-    ttf_cmap_t *cmap;
-
-    cmap = (ttf_cmap_t *)tab;
-    if (tabsize < 4) return TTF_ERR_FMT;
-    conv16(cmap->version);
-    conv16(cmap->numTables);
-    if (cmap->version != 0) return TTF_ERR_UTAB;
-    if (cmap->numTables * 8 + 4 > tabsize) return TTF_ERR_FMT;
-    for (i = 0; i < (int)cmap->numTables; i++)
+    if (s->scmap < 4) return TTF_ERR_FMT;
+    if (s->pcmap->version != 0) return TTF_ERR_UTAB;
+    int ntab = big16toh(s->pcmap->numTables);
+    if (ntab * 8 + 4 > s->scmap) return TTF_ERR_FMT;
+    for (i = 0; i < ntab; i++)
     {
-        uint16_t format;
-        conv16(cmap->encRecs[i].platformID);
-        conv16(cmap->encRecs[i].encodingID);
-        conv32(cmap->encRecs[i].offset);
-        if ((int)cmap->encRecs[i].offset + 4 > tabsize) return TTF_ERR_FMT;
-        format = *(uint16_t *)(tab + cmap->encRecs[i].offset);
-        conv16(format);
-        if (format == 4)
-            return parse_fmt4(ttf, tab + cmap->encRecs[i].offset,
-                              tabsize - cmap->encRecs[i].offset);
+        int offset = big32toh(s->pcmap->encRecs[i].offset);
+        if (offset + 4 > s->scmap) return TTF_ERR_FMT;
+        uint16_t format = *(uint16_t *)((char *)s->pcmap + offset);
+        if (big16toh(format) != 4) continue;
+        s->pfmt4 = (ttf_fmt4_t *)((char *)s->pcmap + offset);
+        s->sfmt4 = s->scmap - offset;
+        return TTF_DONE;
     }
     return TTF_ERR_UTAB;
 }
@@ -1141,22 +1367,22 @@ static bool parse_name(ttf_t *ttf, uint8_t *tab, int tabsize)
     conv16(hdr->stringOffset);
     if (hdr->format != 0 && hdr->format != 1) return false;
     if (hdr->count * (int)sizeof(hdr->nameRecord[0]) + 6 > tabsize) return false;
-    ttf->info.copyright = empty_string;
-    ttf->info.family = empty_string;
-    ttf->info.subfamily = empty_string;
-    ttf->info.unique_id = empty_string;
-    ttf->info.full_name = empty_string;
-    ttf->info.version = empty_string;
-    ttf->info.ps_name = empty_string;
-    ttf->info.trademark = empty_string;
-    ttf->info.manufacturer = empty_string;
-    ttf->info.designer = empty_string;
-    ttf->info.description = empty_string;
-    ttf->info.url_vendor = empty_string;
-    ttf->info.url_designer = empty_string;
-    ttf->info.license_desc = empty_string;
-    ttf->info.locense_url = empty_string;
-    ttf->info.sample_text = empty_string;
+    ttf->names.copyright = empty_string;
+    ttf->names.family = empty_string;
+    ttf->names.subfamily = empty_string;
+    ttf->names.unique_id = empty_string;
+    ttf->names.full_name = empty_string;
+    ttf->names.version = empty_string;
+    ttf->names.ps_name = empty_string;
+    ttf->names.trademark = empty_string;
+    ttf->names.manufacturer = empty_string;
+    ttf->names.designer = empty_string;
+    ttf->names.description = empty_string;
+    ttf->names.url_vendor = empty_string;
+    ttf->names.url_designer = empty_string;
+    ttf->names.license_desc = empty_string;
+    ttf->names.locense_url = empty_string;
+    ttf->names.sample_text = empty_string;
     for (i = 0; i < hdr->count; i++)
     {
         char *s;
@@ -1171,11 +1397,11 @@ static bool parse_name(ttf_t *ttf, uint8_t *tab, int tabsize)
             hdr->nameRecord[i].length > tabsize) return false;
         s = (char *)tab + hdr->stringOffset + hdr->nameRecord[i].offset;
         #define match(id, field) \
-        if (hdr->nameRecord[i].nameID == id && ttf->info.field == empty_string) \
-            ttf->info.field = namerec2ascii(s, hdr->nameRecord[i].length, \
-                                            hdr->nameRecord[i].platformID, \
-                                            hdr->nameRecord[i].encodingID, \
-                                            hdr->nameRecord[i].languageID)
+        if (hdr->nameRecord[i].nameID == id && ttf->names.field == empty_string) \
+            ttf->names.field = namerec2ascii(s, hdr->nameRecord[i].length, \
+                                             hdr->nameRecord[i].platformID, \
+                                             hdr->nameRecord[i].encodingID, \
+                                             hdr->nameRecord[i].languageID)
         match(0, copyright);
         match(1, family);
         match(2, subfamily);
@@ -1267,6 +1493,26 @@ static void ttf_prepare_to_output(ttf_t *ttf, pps_t *pps)
         SWAP(uint16_t, ttf->char2glyph[i], ttf->char2glyph[i - 1]);
         i = i == 1 ? j : i - 1;
     }
+
+    /* apply macStyle */
+    uint16_t style = big16toh(pps->phead->macStyle);
+    ttf->head.macStyle.bold = (style & 1) != 0;
+    ttf->head.macStyle.italic = (style & 2) != 0;
+    ttf->head.macStyle.underline = (style & 4) != 0;
+    ttf->head.macStyle.outline = (style & 8) != 0;
+    ttf->head.macStyle.shadow = (style & 16) != 0;
+    ttf->head.macStyle.condensed = (style & 32) != 0;
+    ttf->head.macStyle.extended = (style & 64) != 0;
+
+    /* apply OS/2 */
+    ttf->os2.xAvgCharWidth *= scale;
+    ttf->os2.yStrikeoutSize *= scale;
+    ttf->os2.yStrikeoutPos *= scale;
+    ttf->os2.sTypoAscender *= scale;
+    ttf->os2.sTypoDescender *= scale;
+    ttf->os2.sTypoLineGap *= scale;
+    ttf->os2.usWinAscent *= scale;
+    ttf->os2.usWinDescent *= scale;
 }
 
 int ttf_load_from_mem(const uint8_t *data, int size, ttf_t **output, bool headers_only)
@@ -1288,26 +1534,31 @@ int ttf_load_from_mem(const uint8_t *data, int size, ttf_t **output, bool header
 
     /* check head table */
     check(s.shead == sizeof(ttf_head_t), TTF_ERR_FMT);
-    check(big32toh(((ttf_head_t *)s.phead)->magicNumber) == 0x5F0F3CF5, TTF_ERR_FMT);
+    check(big32toh(s.phead->magicNumber) == 0x5F0F3CF5, TTF_ERR_FMT);
 
     /* check maxp table */
     check(s.smaxp >= 6, TTF_ERR_FMT);
     check(big16toh(((ttf_maxp_t *)s.pmaxp)->verMaj) <= 1, TTF_ERR_UTAB);
 
     /* allocate ttf structure */
-    ttf = allocate_ttf_structure(big16toh(((ttf_maxp_t *)s.pmaxp)->numGlyphs), headers_only);
+    ttf = allocate_ttf_structure(big16toh(s.pmaxp->numGlyphs), headers_only);
     check(ttf != NULL, TTF_ERR_NOMEM);
 
     /* check name table */
     check(s.sname >= (int)sizeof(ttf_name_t), TTF_ERR_FMT);
     check(parse_name(ttf, (uint8_t *)s.pname, s.sname), TTF_ERR_FMT);
 
+    result = parse_os2_table(ttf, &s);
+    if (result != TTF_DONE) goto error;
+
+    result = locate_fmt4_table(&s);
+    if (result != TTF_DONE) goto error;
+
+    result = parse_fmt4(ttf, (uint8_t *)s.pfmt4, s.sfmt4, headers_only);
+    if (result != TTF_DONE) goto error;
+
     if (!headers_only)
     {
-        /* check and parse cmap table */
-        result = parse_cmap(ttf, (uint8_t *)s.pcmap, s.scmap);
-        if (result != TTF_DONE) goto error;
-
         /* check and convert loca table */
         check(big16toh(s.phead->indexToLocFormat) <= 1, TTF_ERR_FMT);
         if (s.phead->indexToLocFormat == 0)
@@ -1564,7 +1815,7 @@ static int font_list_sorting(const void *a, const void *b)
     const ttf_t *A, *B;
     A = *(const ttf_t **)a;
     B = *(const ttf_t **)b;
-    return strcmp(A->info.full_name, B->info.full_name);
+    return strcmp(A->names.full_name, B->names.full_name);
 }
 
 ttf_t **ttf_list_fonts(const char **directories, int dir_count)
@@ -1594,7 +1845,7 @@ ttf_t **ttf_list_fonts(const char **directories, int dir_count)
     {
         if (i != count - 1)
             if (res[i]->glyf_csum == res[i + 1]->glyf_csum)
-                if (strcmp(res[i]->info.full_name, res[i + 1]->info.full_name) == 0)
+                if (strcmp(res[i]->names.full_name, res[i + 1]->names.full_name) == 0)
                 {
                     ttf_free(res[i]);
                     continue;
@@ -1645,6 +1896,116 @@ int ttf_find_glyph(const ttf_t *ttf, uint16_t utf16)
             lsi = mid;
     }
     return -1;
+}
+
+/**
+ * @brief return matching level in range 0...3
+ */
+static int font_matching_metric(const ttf_t *font, char req, va_list args)
+{
+    switch (req)
+    {
+    case 'b': case 'B': return font->os2.fsSelection.bold ? 3 : 0;
+    case 'i': case 'I': return font->os2.fsSelection.italic ? 3 : 0;
+    case 'h': case 'H': return font->os2.fsSelection.outlined ? 3 : 0;
+    case 'o': case 'O': return font->os2.fsSelection.oblique ? 3 : (font->os2.fsSelection.italic ? 2 : 0);
+    case 'r': case 'R': return font->os2.fsSelection.regular ? 3 : 0;
+    }
+    if (req == 'w' || req == 'W')
+    {
+        int weight = va_arg(args, int);
+        int delta = abs(font->os2.usWeightClass - weight) / 100;
+        return delta > 3 ? 0 : 3 - delta;
+    }
+    if (req == 'f' || req == 'F')
+    {
+        const char *a = va_arg(args, const char *);
+        const char *b = font->names.family;
+        while (1)
+        {
+            char A = *a >= 'a' ? *a - 'a' + 'A' : *a;
+            char B = *b >= 'a' ? *b - 'a' + 'A' : *b;
+            if (A == B)
+            {
+                if (A == 0) return 3; /* exact matching */
+                a++; b++;
+                continue;
+            }
+            if (A == 0 && B == ' ') return 2; /* find "Times" test "Times New Roman" */
+            if (B == 0 && A == ' ') return 1; /* find "Times New Roman" test "Times" */
+            return 0;
+        }
+    }
+    if (req == 't' || req == 'T')
+    {
+        const uint16_t *t = va_arg(args, const uint16_t *);
+        int last_range = 0;
+        unsigned wchars_count = 0;
+        unsigned matched_count = 0;
+        while (*t != 0)
+        {
+            if (*t < ubranges[last_range].first || *t > ubranges[last_range].last)
+            {
+                int range = find_ubrange(*t);
+                if (range == -1)
+                {
+                    t++;
+                    continue;
+                }
+                last_range = range;
+            }
+            if (font->ubranges[last_range / 32] & (1 << (last_range & 31)))
+                matched_count++;
+            wchars_count++;
+            t++;
+        }
+        if (wchars_count == matched_count) return 3;
+        if (matched_count > wchars_count * 2 / 3) return 2;
+        if (matched_count >= wchars_count / 2) return 1;
+        return 0;
+    }
+    return 0;
+}
+
+ttf_t *ttf_list_match(ttf_t **list, ttf_t *deflt, const char *requirements, ...)
+{
+    va_list args;
+
+    ttf_t *res = deflt;
+    uint64_t res_score = 0;
+
+    while (*list != NULL)
+    {
+        uint64_t score = 0;
+        const char *s = requirements;
+        va_start(args, requirements);
+        while (*s != 0)
+        {
+            char req = *s++;
+            bool exactly = false;
+            if (*s == '!')
+            {
+                exactly = true;
+                s++;
+            }
+            int m = font_matching_metric(*list, req, args);
+            if (exactly && m != 3)
+            {
+                score = 0;
+                break;
+            }
+            score = (score << 2) | m;
+        }
+        va_end(args);
+        if (score > res_score)
+        {
+            res_score = score;
+            res = *list;
+        }
+        list++;
+    }
+
+    return res;
 }
 
 /**
@@ -3614,8 +3975,8 @@ int ttf_export_to_obj(ttf_t *ttf, const char *file_name, uint8_t quality)
     FILE *f = fopen(file_name, "wb");
     if (f == NULL) return TTF_ERR_OPEN;
     if (fprintf(f, "# File generated by ttf2mesh %s\n", TTF2MESH_VERSION) == 0) goto werror;
-    if (fprintf(f, "# Font full name: %s\n", ttf->info.full_name) == 0) goto werror;
-    if (fprintf(f, "# Font family, subfamily: %s, %s\n", ttf->info.family, ttf->info.subfamily) == 0) goto werror;
+    if (fprintf(f, "# Font full name: %s\n", ttf->names.full_name) == 0) goto werror;
+    if (fprintf(f, "# Font family, subfamily: %s, %s\n", ttf->names.family, ttf->names.subfamily) == 0) goto werror;
     if (fprintf(f, "# Export quality parameter: %i\n\n", (int)quality) == 0) goto werror;
     int vtotal = 0;
     int ttotal = 0;
@@ -3701,22 +4062,22 @@ void ttf_free(ttf_t *ttf)
             ttf_free_outline(ttf->glyphs[i].outline);
     #define free_string(s) if (s != empty_string) free((char *)s)
     free_string(ttf->filename         );
-    free_string(ttf->info.copyright   );
-    free_string(ttf->info.family      );
-    free_string(ttf->info.subfamily   );
-    free_string(ttf->info.unique_id   );
-    free_string(ttf->info.full_name   );
-    free_string(ttf->info.version     );
-    free_string(ttf->info.ps_name     );
-    free_string(ttf->info.trademark   );
-    free_string(ttf->info.manufacturer);
-    free_string(ttf->info.designer    );
-    free_string(ttf->info.description );
-    free_string(ttf->info.url_vendor  );
-    free_string(ttf->info.url_designer);
-    free_string(ttf->info.license_desc);
-    free_string(ttf->info.locense_url );
-    free_string(ttf->info.sample_text );
+    free_string(ttf->names.copyright   );
+    free_string(ttf->names.family      );
+    free_string(ttf->names.subfamily   );
+    free_string(ttf->names.unique_id   );
+    free_string(ttf->names.full_name   );
+    free_string(ttf->names.version     );
+    free_string(ttf->names.ps_name     );
+    free_string(ttf->names.trademark   );
+    free_string(ttf->names.manufacturer);
+    free_string(ttf->names.designer    );
+    free_string(ttf->names.description );
+    free_string(ttf->names.url_vendor  );
+    free_string(ttf->names.url_designer);
+    free_string(ttf->names.license_desc);
+    free_string(ttf->names.locense_url );
+    free_string(ttf->names.sample_text );
     free(ttf);
 }
 

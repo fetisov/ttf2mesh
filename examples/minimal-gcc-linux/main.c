@@ -180,7 +180,7 @@ int main(int argc, const char **argv)
         printf("unable to load font %s\n", argv[1]);
         return 1;
     }
-    printf("Font name: %s (%s)\n", ttf->info.family, ttf->info.subfamily);
+    printf("Font name: %s (%s)\n", ttf->names.family, ttf->names.subfamily);
 
     if (!set_drawing_symbol('a'))
         return 1;

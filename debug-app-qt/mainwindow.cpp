@@ -222,7 +222,7 @@ public:
                 int nvert = huge10.count() == 0 ? 0 : huge10[0].nvert;
                 if (m->nv > nvert)
                 {
-                    Issue I(0, ttf->info.full_name, ttf->chars[i], -1, "", m->nv);
+                    Issue I(0, ttf->names.full_name, ttf->chars[i], -1, "", m->nv);
                     if (huge10.count() < 10)
                         huge10 << I; else
                         huge10[0] = I;
@@ -235,7 +235,7 @@ public:
                 total.glyphs++;
                 total.warn++;
                 timerep << TimeRep(m->nv, (int)elapsed);
-                issue << Issue(code, ttf->info.full_name, ttf->chars[i]);
+                issue << Issue(code, ttf->names.full_name, ttf->chars[i]);
             }
 
             if (code == MESHER_FAIL)
@@ -243,7 +243,7 @@ public:
                 total.glyphs++;
                 total.fail++;
                 utf_errors[get_urange_index(ttf->chars[i])]++;
-                issue << Issue(code, ttf->info.full_name, ttf->chars[i], m->debug.curr_step, m->debug.message);
+                issue << Issue(code, ttf->names.full_name, ttf->chars[i], m->debug.curr_step, m->debug.message);
             }
 
             free_mesher(m);
@@ -300,6 +300,7 @@ MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
     ui(new Ui::MainWindow)
 {
+    memset(args, 0, sizeof(args));
     fonts = ttf_list_system_fonts();
     assert(fonts != NULL);
     assert(fonts[0] != NULL);
@@ -734,6 +735,197 @@ void MainWindow::updateTextPage()
     ui->numTriangles->setText(QString("%1 triangles output").arg(ui->renderer->numTriangles));
 }
 
+MatchingArg::MatchingArg(QWidget *parent) : QWidget(parent)
+{
+    type = 0;
+
+    hide();
+    QGridLayout *l = new QGridLayout(this);
+    l->setVerticalSpacing(0);
+    setLayout(l);
+    title = new QLabel(this);
+    title->hide();
+    l->addWidget(title, 0, 0, 1, 1);
+
+    weights = new QComboBox(this);
+    weights->addItem("TTF_WEIGHT_THIN");
+    weights->addItem("TTF_WEIGHT_EXTRALIGHT");
+    weights->addItem("TTF_WEIGHT_LIGHT");
+    weights->addItem("TTF_WEIGHT_NORMAL");
+    weights->addItem("TTF_WEIGHT_MEDIUM");
+    weights->addItem("TTF_WEIGHT_DEMIBOLD");
+    weights->addItem("TTF_WEIGHT_BOLD");
+    weights->addItem("TTF_WEIGHT_EXTRABOLD");
+    weights->addItem("TTF_WEIGHT_BLACK");
+    weights->hide();
+    l->addWidget(weights, 1, 0, 1, 1);
+
+    family = new QLineEdit(this);
+    family->hide();
+    l->addWidget(family, 2, 0, 1, 1);
+
+    text = new QLineEdit(this);
+    text->hide();
+    l->addWidget(text, 3, 0, 1, 1);
+
+    connect(weights, SIGNAL(currentIndexChanged(int)), this, SLOT(edited()));
+    connect(family, SIGNAL(textChanged(QString)), this, SLOT(edited()));
+    connect(text, SIGNAL(textChanged(QString)), this, SLOT(edited()));
+}
+
+void MatchingArg::setType(char type)
+{
+    if (type >= 'A' && type <= 'Z')
+        type = type - 'A' + 'a';
+
+    if (type == this->type) return;
+
+    hide();
+    title->hide();
+    weights->hide();
+    family->hide();
+    text->hide();
+
+    switch (type)
+    {
+    case 'b': title->setText("Matching bold..."); title->show(); break;
+    case 'i': title->setText("Matching italic..."); title->show(); break;
+    case 'h': title->setText("Matching font with hollow glyps..."); title->show(); break;
+    case 'o': title->setText("Matching oblique font..."); title->show(); break;
+    case 'r': title->setText("Matching regular font..."); title->show(); break;
+    case 'w': weights->show(); break;
+    case 'f': family->show(); break;
+    case 't': text->show(); break;
+    default:
+        this->type = 0;
+        return;
+    }
+
+    this->type = type;
+    show();
+}
+
+bool MatchingArg::has_arg()
+{
+    return type == 'w' || type == 'f' || type == 't';
+}
+
+size_t MatchingArg::get_arg()
+{
+    uint16_t *t;
+    switch (type)
+    {
+    case 'w': return (weights->currentIndex() + 1) * 100;
+    case 'f':
+        buff = family->text().toUtf8();
+        return (size_t)buff.data();
+    case 't':
+        buff.resize(text->text().length() * 2 + 2);
+        t = (uint16_t *)buff.data();
+        for (int i = 0; i < text->text().length(); i++)
+            *t++ = text->text().at(i).unicode();
+        *t = 0;
+        return (size_t)buff.data();
+    default: return 0;
+    }
+}
+
+void MatchingArg::edited()
+{
+    emit chanded();
+}
+
+QString fontInfoStr(const ttf_t *ttf, int index, int count)
+{
+    QString macStyle = QString("%1%2%3%4%5%6%7")
+        .arg(ttf->head.macStyle.bold ? "bold " : "")
+        .arg(ttf->head.macStyle.italic ? "italic " : "")
+        .arg(ttf->head.macStyle.underline ? "underline " : "")
+        .arg(ttf->head.macStyle.outline ? "outline " : "")
+        .arg(ttf->head.macStyle.shadow ? "shadow " : "")
+        .arg(ttf->head.macStyle.condensed ? "condensed " : "")
+        .arg(ttf->head.macStyle.extended ? "extended " : "");
+
+    QString os2 = QString("<b>sFamilyClass</b> %1 <b>usWeightClass</b> %2 <b>usWidthClass</b> %3 <b>panose</b> %4 <b>fsSelection</b> %5")
+        .arg(ttf->os2.sFamilyClass)
+        .arg(ttf->os2.usWeightClass)
+        .arg(ttf->os2.usWidthClass)
+        .arg(QString("%1%2%3%4%5%6%7%8%9%10")
+            .arg(ttf->os2.panose[0]).arg(ttf->os2.panose[1]).arg(ttf->os2.panose[2]).arg(ttf->os2.panose[3]).arg(ttf->os2.panose[4])
+            .arg(ttf->os2.panose[5]).arg(ttf->os2.panose[6]).arg(ttf->os2.panose[7]).arg(ttf->os2.panose[8]).arg(ttf->os2.panose[9]))
+        .arg(QString("%1%2%3%4%5%6%7%8%9")
+            .arg(ttf->os2.fsSelection.italic ? "italic " : "")
+            .arg(ttf->os2.fsSelection.underscore ? "underscore " : "")
+            .arg(ttf->os2.fsSelection.negative ? "negative " : "")
+            .arg(ttf->os2.fsSelection.outlined ? "outlined " : "")
+            .arg(ttf->os2.fsSelection.strikeout ? "strikeout " : "")
+            .arg(ttf->os2.fsSelection.bold ? "bold " : "")
+            .arg(ttf->os2.fsSelection.regular ? "regular " : "")
+            .arg(ttf->os2.fsSelection.utm ? "utm " : "")
+            .arg(ttf->os2.fsSelection.oblique ? "oblique " : ""));
+
+    QString res = QString("<b>font file</b> %1<br>"
+                          "<b>font</b> %2 from %3, <b>full name</b> %4, <b>version</b> %5, <b>glyphs</b> %6<br>"
+                          "<b>family</b> %7, <b>subfamily</b> %8, <b>macStyle</b> %9<br>"
+                          "<b>OS/2:</b> %10")
+                                .arg(ttf->filename)
+                                .arg(index + 1)
+                                .arg(count)
+                                .arg(ttf->names.full_name)
+                                .arg(ttf->names.version)
+                                .arg(ttf->nglyphs)
+                                .arg(ttf->names.family)
+                                .arg(ttf->names.subfamily)
+                                .arg(macStyle)
+                                .arg(os2);
+
+    return res;
+}
+
+void MainWindow::updateMatchingPage()
+{
+    if (args[0] == NULL)
+    {
+        ui->arguments->setLayout(new QVBoxLayout(ui->arguments));
+        ui->arguments->layout()->setSpacing(2);
+        for (int i = 0; i < 32; i++)
+        {
+            args[i] = new MatchingArg(ui->arguments);
+            ui->arguments->layout()->addWidget(args[i]);
+            connect(args[i], SIGNAL(chanded()), this, SLOT(updateUi()));
+        }
+    }
+
+
+    QByteArray buff = ui->requirements->text().toUtf8();
+    const char *s = buff.data();
+    size_t a[32] = {0};
+    int nargs = 0;
+    for (int i = 0; i < 32; i++)
+    {
+        if (*s == 0)
+        {
+            for (int j = i; j < 32; j++)
+                args[j]->setType(0);
+            break;
+        }
+        char req = *s++;
+        bool exact = *s == '!';
+        if (exact) s++;
+        args[i]->setType(req);
+        if (args[i]->has_arg())
+            a[nargs++] = args[i]->get_arg();
+    }
+    ttf_t *m = ttf_list_match(fonts, NULL, buff.data(),
+        a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7],
+        a[8], a[9], a[10], a[11], a[12], a[13], a[14], a[15],
+        a[16], a[17], a[18], a[19], a[20], a[21], a[22], a[23],
+        a[24], a[25], a[26], a[27], a[28], a[29], a[30], a[31]);
+    if (m == NULL)
+        ui->matched->setText("matched: NULL"); else
+        ui->matched->setText(fontInfoStr(m, 0, 0));
+}
+
 void MainWindow::applyTestResults(FontTest *t)
 {
     QWidget *tab = new QWidget(this);
@@ -782,16 +974,8 @@ void MainWindow::updateFontInfo()
         return;
     }
     int index = ui->fonts->currentIndex();
-    ui->fontInfo->setText(QString("<b>font file</b> %1<br><b>font</b> %2 from %3, <b>full name</b> %4, <b>version</b> %5, <b>glyphs</b> %6<br>"
-                                  "<b>family</b> %7, <b>subfamily</b> %8")
-                                        .arg(ttf->filename)
-                                        .arg(index + 1)
-                                        .arg(ui->fonts->count())
-                                        .arg(ttf->info.full_name)
-                                        .arg(ttf->info.version)
-                                        .arg(ttf->nglyphs)
-                                        .arg(ttf->info.family)
-                                        .arg(ttf->info.subfamily));
+    int count = ui->fonts->count();
+    ui->fontInfo->setText(fontInfoStr(ttf, index, count));
 }
 
 void MainWindow::updateUi()
@@ -805,13 +989,15 @@ void MainWindow::updateUi()
         updateDebugPage();
     if (ui->tabWidget->currentIndex() == 2)
         updateTextPage();
+    if (ui->tabWidget->currentIndex() == 3)
+        updateMatchingPage();
 }
 
 void MainWindow::setupFontList()
 {
     ui->fonts->clear();
     for (int i = 0; fonts[i] != NULL; i++)
-        ui->fonts->addItem(QString("%1").arg(fonts[i]->info.full_name));
+        ui->fonts->addItem(QString("%1").arg(fonts[i]->names.full_name));
 }
 
 void MainWindow::updateGlyphsList()
@@ -1112,7 +1298,7 @@ void MainWindow::onAppLink(const QString &link)
     {
         FontTest::Issue issue(link);
         for (int i = 0; fonts[i] != NULL; i++)
-            if (fonts[i]->info.full_name == issue.font)
+            if (fonts[i]->names.full_name == issue.font)
             {
                 ttf_t *f;
                 if (ttf_load_from_file(fonts[i]->filename, &f, false) != TTF_DONE)

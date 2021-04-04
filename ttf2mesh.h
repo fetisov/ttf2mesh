@@ -23,6 +23,15 @@
  */
 
 /*
+    Release 1.2 (April 4, 2021)
+        New Features and Improvements:
+            - ttf_list_fonts and ttf_list_system_fonts now accept the specified filename mask
+            - ttf_glyph2svgpath now accept the scaling parameters
+            - ttf_list_match_id function was added
+        Non-Backwards Compatible Changes:
+            - in the ttf_list_fonts and ttf_list_system_fonts mask parameter was added,
+              it can be set to NULL for backwards compatible
+
     Release 1.1 (May 18, 2020)
         New Features and Improvements:
             - ubranges variable that lists the unicode BMP ranges was added
@@ -318,23 +327,28 @@ int ttf_load_from_file(const char *filename, ttf_t **output, bool headers_only);
  * @brief List available fonts in directory
  * @param directories Array of standard C strings
  * @param dir_count Length of \a directories array
+ * @param mask Font file name pattern (can be NULL)
  * @return Array of references to ttf_t objects or NULL if no memory
  *
- * Font list is terminated by NULL reference.
+ * The list of fonts returned is terminated with a NULL reference.
  * Any font in list has no loaded glyphs but values of other fields are presented.
  * After using the list, you need to free it with ttf_free_list function.
+ * The \a mask parameter specifies a file name pattern or a series of patterns separated 
+ * by the "|" character. At the end of the pattern string the "*" character is allowed.
+ * If all characters in the file name string match before the "*", the font with that name 
+ * is accepted. The text matching process is case insensitive.
  */
-ttf_t **ttf_list_fonts(const char **directories, int dir_count);
+ttf_t **ttf_list_fonts(const char **directories, int dir_count, const char *mask);
 
 /**
  * @brief List available system fonts
+ * @param mask Font file name pattern (can be NULL)
  * @return Array of references to ttf_t objects or NULL if no memory
  *
- * Font list is terminated by NULL reference.
- * Any font in list has no loaded glyphs but values of other fields are presented.
- * After using the list, you need to free it with ttf_free_list function.
+ * This function is similar to ttf_list_fonts, but lists the fonts in the system font
+ * directories, which are different for different operating systems. 
  */
-ttf_t **ttf_list_system_fonts(void);
+ttf_t **ttf_list_system_fonts(const char *mask);
 
 /**
  * @brief Matching font from list
@@ -379,6 +393,12 @@ ttf_t **ttf_list_system_fonts(void);
  * - The "r!" and "b!" requirements are incompatible.
  */
 ttf_t *ttf_list_match(ttf_t **list, ttf_t *deflt, const char *requirements, ...);
+
+/**
+ * @brief Same as ttf_list_match.
+ * @return Index of matched font from \a list or -1 value if no font matched
+ */
+int ttf_list_match_id(ttf_t **list, const char *requirements, ...);
 
 /**
  * @brief Translate unicode character to glyph index in font object
@@ -436,9 +456,11 @@ bool ttf_outline_contour_info(const ttf_outline_t *outline, int subglyph, int co
 /**
  * @brief Convert glyph to <path/> object of svg document
  * @param glyph Pointer to glyph object
+ * @param xscale Scaling the glyph horizontally
+ * @param yscale Scaling the glyph vertically
  * @return Null terminated string or NULL if no memory in system
  */
-char *ttf_glyph2svgpath(ttf_glyph_t *glyph);
+char *ttf_glyph2svgpath(ttf_glyph_t *glyph, float xscale, float yscale);
 
 /**
  * @brief Convert glyph to mesh-object

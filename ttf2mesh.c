@@ -1427,11 +1427,11 @@ static ttf_t *allocate_ttf_structure(int nglyphs, bool headers_only)
     ttf_t *res;
     if (headers_only)
     {
-        res = calloc(sizeof(ttf_t), 1);
+        res = (ttf_t *)calloc(sizeof(ttf_t), 1);
         if (res == NULL) return NULL;
         return res;
     }
-    res = calloc(sizeof(ttf_t) + nglyphs * sizeof(ttf_glyph_t), 1);
+    res = (ttf_t *)calloc(sizeof(ttf_t)+nglyphs * sizeof(ttf_glyph_t), 1);
     if (res == NULL) return NULL;
     res->nglyphs = nglyphs;
     res->glyphs = (ttf_glyph_t *)(res + 1);
@@ -1632,7 +1632,7 @@ int ttf_load_from_file(const char *filename, ttf_t **output, bool headers_only)
     check(fseek(f, 0, SEEK_SET) == 0, TTF_ERR_FMT);
 
     /* allocate memory to file content */
-    data = malloc(size);
+    data = (uint8_t *)malloc(size);
     check(data != NULL, TTF_ERR_NOMEM);
 
     /* read file content */
@@ -1706,8 +1706,43 @@ static bool check_font_ext(const char *file_name)
         (file_name[3] == 'F' || file_name[3] == 'f');
 }
 
+static bool single_match(const char *str, const char *pattern, int slen, int plen)
+{
+    if (plen <= 0 || slen <= 0) return false;
+    for (int i = 0; i < plen; i++)
+    {
+        char p = pattern[i];
+        if (p == '*') return true;
+        if (i >= slen) return false;
+        if (p == '?') continue;
+        char s = str[i];
+        if (p >= 'A' && p <= 'Z') p += 'a' - 'A';
+        if (s >= 'A' && s <= 'Z') s += 'a' - 'A';
+        if (p != s) return false;
+    }
+    return slen == plen;
+}
+
+static bool check_by_mask(const char *file_name, const char *mask)
+{
+    if (mask == NULL) return true;
+    if (mask[0] == 0) return true;
+
+    int slen = strlen(file_name) - 4;
+    if (slen < 1) return false;
+
+    while (1)
+    {
+        const char *end = mask;
+        while (*end != 0 && *end != '|') end++;
+        if (single_match(file_name, mask, slen, end - mask)) return true;
+        if (*end == 0) return false;
+        mask = end + 1;
+    }
+}
+
 #if defined(TTF_LINUX)
-static ttf_t **load_fonts_from_dir(ttf_t **list, int *count, int *cap, const char *dir, char *fullpath, int deepmax)
+static ttf_t **load_fonts_from_dir(ttf_t **list, int *count, int *cap, const char *dir, char *fullpath, int deepmax, const char *mask)
 {
     DIR *d;
     struct dirent *entry;
@@ -1724,7 +1759,7 @@ static ttf_t **load_fonts_from_dir(ttf_t **list, int *count, int *cap, const cha
             if ((entry->d_type & DT_DIR) != 0)
             {
                 if (deepmax > 0)
-                    list = load_fonts_from_dir(list, count, cap, entry->d_name, fullpath, deepmax - 1);
+                    list = load_fonts_from_dir(list, count, cap, entry->d_name, fullpath, deepmax - 1, mask);
             }
             else
                 if ((entry->d_type & DT_REG))
@@ -1732,6 +1767,7 @@ static ttf_t **load_fonts_from_dir(ttf_t **list, int *count, int *cap, const cha
                     ttf_t *font;
                     int old_len = strlen(fullpath);
                     if (!check_font_ext(entry->d_name)) continue;
+                    if (!check_by_mask(entry->d_name, mask)) continue;
                     if (!make_full_path(fullpath, entry->d_name)) continue;
                     ttf_load_from_file(fullpath, &font, true);
                     fullpath[old_len] = 0;
@@ -1758,7 +1794,7 @@ static ttf_t **load_fonts_from_dir(ttf_t **list, int *count, int *cap, const cha
     return list;
 }
 #elif defined(TTF_WINDOWS)
-static ttf_t **load_fonts_from_dir(ttf_t **list, int *count, int *cap, const char *dir, char *fullpath, int deepmax)
+static ttf_t **load_fonts_from_dir(ttf_t **list, int *count, int *cap, const char *dir, char *fullpath, int deepmax, const char *mask)
 {
     HANDLE hfind;
     WIN32_FIND_DATAA entry;
@@ -1777,13 +1813,14 @@ static ttf_t **load_fonts_from_dir(ttf_t **list, int *count, int *cap, const cha
         if (entry.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
         {
             if (deepmax > 0)
-                list = load_fonts_from_dir(list, count, cap, entry.cFileName, fullpath, deepmax - 1);
+                list = load_fonts_from_dir(list, count, cap, entry.cFileName, fullpath, deepmax - 1, mask);
         }
         else
         {
             ttf_t *font;
             int old_len = strlen(fullpath);
             if (!check_font_ext(entry.cFileName)) continue;
+            if (!check_by_mask(entry.cFileName, mask)) continue;
             if (!make_full_path(fullpath, entry.cFileName)) continue;
             ttf_load_from_file(fullpath, &font, true);
             fullpath[old_len] = 0;
@@ -1818,7 +1855,7 @@ static int font_list_sorting(const void *a, const void *b)
     return strcmp(A->names.full_name, B->names.full_name);
 }
 
-ttf_t **ttf_list_fonts(const char **directories, int dir_count)
+ttf_t **ttf_list_fonts(const char **directories, int dir_count, const char *mask)
 {
     ttf_t **res;
     int count, cap, i, n;
@@ -1834,7 +1871,7 @@ ttf_t **ttf_list_fonts(const char **directories, int dir_count)
     if (res == NULL) return NULL;
 
     for (i = 0; i < dir_count; i++)
-        res = load_fonts_from_dir(res, &count, &cap, directories[i], fullpath, 5);
+        res = load_fonts_from_dir(res, &count, &cap, directories[i], fullpath, 5, mask);
 
     /* sorting list by font full_name field */
     qsort(res, count, sizeof(ttf_t *), font_list_sorting);
@@ -1857,7 +1894,7 @@ ttf_t **ttf_list_fonts(const char **directories, int dir_count)
     return res;
 }
 
-ttf_t **ttf_list_system_fonts(void)
+ttf_t **ttf_list_system_fonts(const char *mask)
 {
     static const char *directories[] = {
 #if defined(TTF_LINUX)
@@ -1867,7 +1904,7 @@ ttf_t **ttf_list_system_fonts(void)
 #endif
     };
     int dir_count = sizeof(directories) / sizeof(char *);
-    return ttf_list_fonts(directories, dir_count);
+    return ttf_list_fonts(directories, dir_count, mask);
 }
 
 int ttf_find_glyph(const ttf_t *ttf, uint16_t utf16)
@@ -1967,18 +2004,18 @@ static int font_matching_metric(const ttf_t *font, char req, va_list args)
     return 0;
 }
 
-ttf_t *ttf_list_match(ttf_t **list, ttf_t *deflt, const char *requirements, ...)
+int ttf_list_vmatch(ttf_t **list, const char *requirements, va_list Args)
 {
     va_list args;
 
-    ttf_t *res = deflt;
+    int res = -1;
     uint64_t res_score = 0;
 
-    while (*list != NULL)
+    for (int i = 0; list[i] != NULL; i++)
     {
         uint64_t score = 0;
         const char *s = requirements;
-        va_start(args, requirements);
+        va_copy(args, Args);
         while (*s != 0)
         {
             char req = *s++;
@@ -1988,7 +2025,7 @@ ttf_t *ttf_list_match(ttf_t **list, ttf_t *deflt, const char *requirements, ...)
                 exactly = true;
                 s++;
             }
-            int m = font_matching_metric(*list, req, args);
+            int m = font_matching_metric(list[i], req, args);
             if (exactly && m != 3)
             {
                 score = 0;
@@ -2000,12 +2037,29 @@ ttf_t *ttf_list_match(ttf_t **list, ttf_t *deflt, const char *requirements, ...)
         if (score > res_score)
         {
             res_score = score;
-            res = *list;
+            res = i;
         }
-        list++;
     }
 
     return res;
+}
+
+int ttf_list_match_id(ttf_t **list, const char *requirements, ...)
+{
+    va_list args;
+    va_start(args, requirements);
+    int id = ttf_list_vmatch(list, requirements, args);
+    va_end(args);
+    return id;
+}
+
+ttf_t *ttf_list_match(ttf_t **list, ttf_t *deflt, const char *requirements, ...)
+{
+    va_list args;
+    va_start(args, requirements);
+    int id = ttf_list_vmatch(list, requirements, args);
+    va_end(args);
+    return id == -1 ? deflt : list[id];
 }
 
 /**
@@ -2282,7 +2336,7 @@ ttf_outline_t *ttf_splitted_outline(const ttf_glyph_t *glyph)
     return s;
 }
 
-static int ttf_glyph2svgpath_impl(ttf_outline_t *o, char *s, int len)
+static int ttf_glyph2svgpath_impl(ttf_outline_t *o, char *s, int len, float xscale, float yscale)
 {
     char tmp;
     int res, n, i, j;
@@ -2303,26 +2357,26 @@ static int ttf_glyph2svgpath_impl(ttf_outline_t *o, char *s, int len)
         clen = o->cont[i].length;
         p = o->cont[i].pt;
         j = 0;
-        n = snprintf(s, len, "M %.3f %.3f ", p->x, -p->y); APPLY();
+        n = snprintf(s, len, "M %.3f %.3f ", p->x * xscale, p->y * yscale); APPLY();
         while (j < clen)
         {
             if (j == clen - 1) break;
             if (p[j + 1].onc)
             {
                 j++;
-                n = snprintf(s, len, "L %.3f %.3f ", p[j].x, -p[j].y); APPLY();
+                n = snprintf(s, len, "L %.3f %.3f ", p[j].x * xscale, p[j].y * yscale); APPLY();
                 continue;
             }
             if (j == clen - 2)
             {
                 j++;
-                n = snprintf(s, len, "Q %.3f,%.3f %.3f,%.3f ", p[j].x, -p[j].y, p[0].x, -p[0].y); APPLY();
+                n = snprintf(s, len, "Q %.3f,%.3f %.3f,%.3f ", p[j].x * xscale, p[j].y * yscale, p[0].x * xscale, p[0].y * yscale); APPLY();
                 break;
             }
             else
             {
                 j++;
-                n = snprintf(s, len, "Q %.3f,%.3f %.3f,%.3f ", p[j].x, -p[j].y, p[j + 1].x, -p[j + 1].y); APPLY();
+                n = snprintf(s, len, "Q %.3f,%.3f %.3f,%.3f ", p[j].x * xscale, p[j].y * yscale, p[j + 1].x * xscale, p[j + 1].y * yscale); APPLY();
                 j++;
             }
         }
@@ -2423,20 +2477,20 @@ bool ttf_outline_contour_info(const ttf_outline_t *outline, int subglyph_order, 
     return (count & 1) == 0;
 }
 
-char *ttf_glyph2svgpath(ttf_glyph_t *glyph)
+char *ttf_glyph2svgpath(ttf_glyph_t *glyph, float xscale, float yscale)
 {
     int len;
     char *res;
     ttf_outline_t *o = ttf_splitted_outline(glyph);
     if (o == NULL) return NULL;
-    len = ttf_glyph2svgpath_impl(o, NULL, 0);
+    len = ttf_glyph2svgpath_impl(o, NULL, 0, xscale, yscale);
     if (len <= 0)
     {
         ttf_free_outline(o);
         return NULL;
     }
     res = (char *)malloc(len + 1);
-    ttf_glyph2svgpath_impl(o, res, len + 1);
+    ttf_glyph2svgpath_impl(o, res, len + 1, xscale, yscale);
     res[len] = 0;
     ttf_free_outline(o);
     return res;
@@ -3936,13 +3990,18 @@ int ttf_glyph2mesh(ttf_glyph_t *glyph, ttf_mesh_t **output, uint8_t quality, int
     {
         mvs_t *v1, *v2, *v3;
         float d1[2], d2[2];
+        if (IS_CONTOUR_EDGE(t->edge[1]))
+            SWAP(mes_t *, t->edge[0], t->edge[1])
+        else
+        if (IS_CONTOUR_EDGE(t->edge[2]))
+            SWAP(mes_t *, t->edge[0], t->edge[2])
         v1 = EDGES_COMMON_VERT(t->edge[0], t->edge[1]);
-        v2 = EDGES_COMMON_VERT(t->edge[1], t->edge[2]);
-        v3 = EDGES_COMMON_VERT(t->edge[2], t->edge[0]);
-        VECSUB(d1, &v2->x, &v1->x);
-        VECSUB(d2, &v3->x, &v2->x);
+        v2 = EDGES_COMMON_VERT(t->edge[0], t->edge[2]);
+        v3 = EDGES_COMMON_VERT(t->edge[1], t->edge[2]);
+        VECSUB(d1, &v1->x, &v2->x);
+        VECSUB(d2, &v1->x, &v3->x);
         if (VECCROSS(d1, d2) < 0)
-            SWAP(mvs_t *, v2, v3);
+            SWAP(mvs_t *, v1, v2);
         out->faces[out->nfaces].v1 = v1 - mesh->v;
         out->faces[out->nfaces].v2 = v2 - mesh->v;
         out->faces[out->nfaces].v3 = v3 - mesh->v;

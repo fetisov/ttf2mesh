@@ -301,7 +301,7 @@ MainWindow::MainWindow(QWidget *parent) :
     ui(new Ui::MainWindow)
 {
     memset(args, 0, sizeof(args));
-    fonts = ttf_list_system_fonts();
+    fonts = ttf_list_system_fonts(NULL);
     assert(fonts != NULL);
     assert(fonts[0] != NULL);
     assert(ttf_load_from_file(fonts[0]->filename, &ttf, false) == TTF_DONE);
@@ -1168,7 +1168,7 @@ void MainWindow::onLoadDir()
 
     const char *dir_list[1] = {array.data()};
 
-    ttf_t **list = ttf_list_fonts(dir_list, 1);
+    ttf_t **list = ttf_list_fonts(dir_list, 1, NULL);
     if (list == NULL) return;
     if (list[0] == NULL)
     {
@@ -1193,7 +1193,7 @@ void MainWindow::onLoadDir()
 
 void MainWindow::onLoadSys()
 {
-    ttf_t **list = ttf_list_system_fonts();
+    ttf_t **list = ttf_list_system_fonts(NULL);
     if (list == NULL) return;
     if (list[0] == NULL)
     {

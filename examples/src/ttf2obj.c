@@ -1,3 +1,5 @@
+#define _CRT_SECURE_NO_WARNINGS
+
 #include "ttf2mesh.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -32,8 +34,8 @@ static void print_tail_of_file(const char *file_name)
     FILE *f = fopen(file_name, "rb");
     if (f == NULL) return;
     fseek(f, -512, SEEK_END);
-    fread(buff, 1, 512, f);
-    buff[512] = 0;
+    int readed = fread(buff, 1, 512, f);
+    buff[readed] = 0;
     const char *str = strstr(buff, "# export finished");
     if (str != NULL)
     {

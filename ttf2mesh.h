@@ -23,6 +23,14 @@
  */
 
 /*
+    Release 1.3 (May 5, 2021)
+        New Features and Improvements:
+            - ttf_glyph2mesh3d and ttf_free_mesh3d functions added for working with 3d-mesh
+        Non-Backwards Compatible Changes:
+            -
+        Bug fixes:
+            -
+
     Release 1.2 (April 4, 2021)
         New Features and Improvements:
             - ttf_list_fonts and ttf_list_system_fonts now accept the specified filename mask
@@ -31,6 +39,8 @@
         Non-Backwards Compatible Changes:
             - in the ttf_list_fonts and ttf_list_system_fonts mask parameter was added,
               it can be set to NULL for backwards compatible
+        Bug fixes:
+            -
 
     Release 1.1 (May 18, 2020)
         New Features and Improvements:
@@ -65,7 +75,7 @@
 extern "C" {
 #endif
 
-#define TTF2MESH_VERSION   "1.0"  /* current library version */
+#define TTF2MESH_VERSION   "1.3"  /* current library version */
 
 #define TTF_MAX_FILE       32     /* font file size limit, MB */
 
@@ -112,6 +122,7 @@ typedef struct ttf_glyph         ttf_glyph_t;
 typedef struct ttf_outline       ttf_outline_t;
 typedef struct ttf_point         ttf_point_t;
 typedef struct ttf_mesh          ttf_mesh_t;
+typedef struct ttf_mesh3d        ttf_mesh3d_t;
 typedef struct unicode_bmp_range ubrange_t;
 
 /**
@@ -295,6 +306,34 @@ struct ttf_mesh
 };
 
 /**
+ * @brief The mesh struct
+ */
+struct ttf_mesh3d
+{
+    int nvert;                    /* length of vert array */
+    int nfaces;                   /* length of faces array */
+    struct
+    {
+        float x;
+        float y;
+        float z;
+    } *vert;                      /* vertices */
+    struct
+    {
+        int v1;                   /* index of vertex #1 of triangle */
+        int v2;                   /* index of vertex #2 of triangle */
+        int v3;                   /* index of vertex #3 of triangle */
+    } *faces;                     /* triangles */
+    struct
+    {
+        float x;
+        float y;
+        float z;
+    } *normals;                   /* normals array with 3*nfaces length */
+    ttf_outline_t *outline;       /* see ttf_linear_outline() */
+};
+
+/**
  * @brief The Unicode Basic Multilingual Plane range struct
  */
 struct unicode_bmp_range
@@ -473,6 +512,17 @@ char *ttf_glyph2svgpath(ttf_glyph_t *glyph, float xscale, float yscale);
 int ttf_glyph2mesh(ttf_glyph_t *glyph, ttf_mesh_t **output, uint8_t quality, int features);
 
 /**
+ * @brief Convert glyph to mesh3d-object
+ * @param glyph Pointer to glyph object
+ * @param output Pointer to mesh3d object or NULL if error occurred
+ * @param quality Number of points to circle (see TTF_QUALITY_XXX)
+ * @param features Process features and tricks (see TTF_FEATURES_DFLT, TTF_FEATURE_XXX)
+ * @param depth Depth of the object
+ * @return Operation result TTF_XXX
+ */
+int ttf_glyph2mesh3d(ttf_glyph_t *glyph, ttf_mesh3d_t **output, uint8_t quality, int features, float depth);
+
+/**
  * @brief Export ttf font to Wavefront .obj file
  * @param ttf Pointer to font object
  * @param file_name File name of output file
@@ -498,6 +548,15 @@ void ttf_free_outline(ttf_outline_t *outline);
  * which was allocated by ttf_glyph2mesh function
  */
 void ttf_free_mesh(ttf_mesh_t *mesh);
+
+/**
+ * @brief Free the mesh3d object
+ * @param mesh Pointer to mesh object
+ *
+ * It is necessary to call after working with mesh object
+ * which was allocated by ttf_glyph2mesh function
+ */
+void ttf_free_mesh3d(ttf_mesh3d_t *mesh);
 
 /**
  * @brief Free the font list created with ttf_list_fonts()

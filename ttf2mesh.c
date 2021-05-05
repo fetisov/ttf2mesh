@@ -1238,7 +1238,7 @@ static int parse_fmt4(ttf_t *ttf, uint8_t *data, int dataSize, bool headers_only
     conv16(tab->segCountX2);
     if (tab->length > dataSize)
         return TTF_ERR_FMT;
-    segCount = tab->segCountX2 / 2;   
+    segCount = tab->segCountX2 / 2;
     endCode = (uint16_t *)(tab + 1);
     startCode = (uint16_t *)(endCode + segCount + 1);
     idDelta = (int16_t *)(startCode + segCount);
@@ -4018,6 +4018,212 @@ failed:
     return TTF_ERR_MESHER;
 }
 
+static inline void calc_normal(float *n, const float *v1, const float *v2, const float *v3)
+{
+    float len, d1[3], d2[3];
+    d1[0] = v1[0] - v2[0]; d1[1] = v1[1] - v2[1]; d1[2] = v1[2] - v2[2];
+    d2[0] = v1[0] - v3[0]; d2[1] = v1[1] - v3[1]; d2[2] = v1[2] - v3[2];
+    n[0] = d1[1] * d2[2] - d1[2] * d2[1];
+    n[1] = d1[2] * d2[0] - d1[0] * d2[2];
+    n[2] = d1[0] * d2[1] - d1[1] * d2[0];
+    len = sqrtf(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+    if (len < 1e-8)
+    {
+        n[0] = 0.0f;
+        n[1] = 0.0f;
+        n[2] = 0.0f;
+        return;
+    }
+    len = 1.0f / len;
+    n[0] *= len;
+    n[1] *= len;
+    n[2] *= len;
+}
+
+static inline void make_quad(float *v, int *id, int vbase, const float *xy1, const float *xy2, float depth)
+{
+    /* four vertices */
+    *v++ = xy1[0]; *v++ = xy1[1]; *v++ = depth;
+    *v++ = xy2[0]; *v++ = xy2[1]; *v++ = depth;
+    *v++ = xy1[0]; *v++ = xy1[1]; *v++ = -depth;
+    *v++ = xy2[0]; *v++ = xy2[1]; *v++ = -depth;
+    /* first triangle */
+    *id++ = vbase + 0;
+    *id++ = vbase + 1;
+    *id++ = vbase + 2;
+    /* second triangle */
+    *id++ = vbase + 2;
+    *id++ = vbase + 1;
+    *id++ = vbase + 3;
+}
+
+int ttf_glyph2mesh3d(ttf_glyph_t *glyph, ttf_mesh3d_t **output, uint8_t quality, int features, float depth)
+{
+    ttf_outline_t *o;
+    mesher_t *mesh;
+    ttf_mesh3d_t *out;
+    int res;
+
+    *output = NULL;
+    if (glyph->outline == NULL)
+        return TTF_ERR_NO_OUTLINE;
+
+    if (quality < 8) quality = 8;
+    if (quality > 128) quality = 128;
+
+    /* Создаём outline и mesher */
+    o = ttf_linear_outline(glyph, quality);
+    if (o == NULL) return TTF_ERR_NOMEM;
+    if (o->total_points < 3)
+    {
+        ttf_free_outline(o);
+        return TTF_ERR_NO_OUTLINE;
+    }
+    mesh = create_mesher(o);
+    if (mesh == NULL)
+    {
+        ttf_free_outline(o);
+        return TTF_ERR_NOMEM;
+    }
+
+    /* Запускаем mesher */
+    res = mesher(mesh, 128);
+    if (res == MESHER_FAIL) goto failed;
+    if (res == MESHER_WARN && (features & TTF_FEATURE_IGN_ERR) == 0) goto failed;
+
+    /* Считаем число треугольников и внешних рёбер */
+    int nt = 0;
+    int ne = 0;
+    for (mts_t *t = mesh->tused.next; t != &mesh->tused; t = t->next)
+    {
+        if (IS_CONTOUR_EDGE(t->edge[0])) ne++;
+        if (IS_CONTOUR_EDGE(t->edge[1])) ne++;
+        if (IS_CONTOUR_EDGE(t->edge[2])) ne++;
+        nt++;
+    }
+
+    /* Создаём выходной объект */
+    out = (ttf_mesh3d_t *)malloc(
+        sizeof(ttf_mesh3d_t) +
+        (mesh->nv * 2 + ne * 4) * sizeof(*out->vert) +
+        (nt * 2 + ne * 2) * sizeof(*out->faces) +
+        (mesh->nv * 2 + ne * 4) * sizeof(*out->normals)
+    );
+    if (out == NULL)
+    {
+        ttf_free_outline(o);
+        free_mesher(mesh);
+        return TTF_ERR_NOMEM;
+    }
+    out->outline = o;
+    out->nvert = mesh->nv * 2 + ne * 4;
+    out->nfaces = nt * 2 + ne * 2;
+    *(void **)&out->vert = out + 1;
+    *(void **)&out->faces = &out->vert[out->nvert];
+    *(void **)&out->normals = &out->faces[out->nfaces];
+
+    /* Заполняем координаты вершин */
+    float *v = &out->vert[0].x;
+    depth *= 0.5f;
+    for (int i = 0; i < mesh->nv; i++)
+    {
+        *v++ = mesh->v[i].x;
+        *v++ = mesh->v[i].y;
+        *v++ = depth;
+    }
+    for (int i = 0; i < mesh->nv; i++)
+    {
+        *v++ = mesh->v[i].x;
+        *v++ = mesh->v[i].y;
+        *v++ = -depth;
+    }
+
+    int *i1 = &out->faces[0].v1;
+    int *i2 = i1 + nt * 3;
+    int *i3 = i2 + nt * 3;
+
+    int vbase = mesh->nv * 2;
+    for (mts_t *t = mesh->tused.next; t != &mesh->tused; t = t->next)
+    {
+        mvs_t *v1, *v2, *v3;
+
+        /*
+
+              v3
+              /\
+          e0 /  \ e2
+            /    \
+           /______\
+        v1    e1    v2
+
+        */
+
+        v1 = EDGES_COMMON_VERT(t->edge[1], t->edge[0]);
+        v2 = EDGES_COMMON_VERT(t->edge[1], t->edge[2]);
+        v3 = EDGES_COMMON_VERT(t->edge[0], t->edge[2]);
+        float d1[2], d2[2];
+        VECSUB(d1, &v2->x, &v3->x);
+        VECSUB(d2, &v3->x, &v1->x);
+        if (VECCROSS(d1, d2) < 0)
+        {
+            SWAP(mes_t *, t->edge[0], t->edge[2]);
+            SWAP(mvs_t *, v1, v2);
+        }
+
+        i1[0] = v1 - mesh->v;
+        i1[1] = v2 - mesh->v;
+        i1[2] = v3 - mesh->v;
+
+        i2[0] = v3 - mesh->v + mesh->nv;
+        i2[1] = v2 - mesh->v + mesh->nv;
+        i2[2] = v1 - mesh->v + mesh->nv;
+
+        i1 += 3;
+        i2 += 3;
+
+        if (IS_CONTOUR_EDGE(t->edge[0]))
+        {
+            make_quad(v, i3, vbase, &v1->x, &v3->x, depth);
+            v += 4 * 3;
+            i3 += 2 * 3;
+            vbase += 4;
+        }
+        if (IS_CONTOUR_EDGE(t->edge[1]))
+        {
+            make_quad(v, i3, vbase, &v2->x, &v1->x, depth);
+            v += 4 * 3;
+            i3 += 2 * 3;
+            vbase += 4;
+        }
+        if (IS_CONTOUR_EDGE(t->edge[2]))
+        {
+            make_quad(v, i3, vbase, &v3->x, &v2->x, depth);
+            v += 4 * 3;
+            i3 += 2 * 3;
+            vbase += 4;
+        }
+    }
+
+    for (int i = 0; i < out->nfaces; i++)
+    {
+        float *v1 = &out->vert[out->faces[i].v1].x;
+        float *v2 = &out->vert[out->faces[i].v2].x;
+        float *v3 = &out->vert[out->faces[i].v3].x;
+        calc_normal(&out->normals[out->faces[i].v1].x, v1, v2, v3);
+        out->normals[out->faces[i].v2] = out->normals[out->faces[i].v1];
+        out->normals[out->faces[i].v3] = out->normals[out->faces[i].v1];
+    }
+
+    *output = out;
+    free_mesher(mesh);
+    return TTF_DONE;
+
+failed:
+    ttf_free_outline(o);
+    free_mesher(mesh);
+    return TTF_ERR_MESHER;
+}
+
 /******************************************************************************/
 /******************************************************************************/
 /******************************************************************************/
@@ -4097,6 +4303,13 @@ void ttf_free_outline(ttf_outline_t *outline)
 }
 
 void ttf_free_mesh(ttf_mesh_t *mesh)
+{
+    if (mesh == NULL) return;
+    free(mesh->outline);
+    free(mesh);
+}
+
+void ttf_free_mesh3d(ttf_mesh3d_t *mesh)
 {
     if (mesh == NULL) return;
     free(mesh->outline);

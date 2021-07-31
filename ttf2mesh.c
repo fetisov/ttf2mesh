@@ -56,6 +56,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <signal.h>
+#include <limits.h>
 
 /* Big/little endian definitions */
 #if defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__)
@@ -676,12 +677,17 @@ int parse_simple_glyph(ttf_glyph_t *glyph, int glyph_index, uint8_t *p, int avai
 
     j = 0;
     n = -1;
+    int npoints_remaining = glyph->npoints;
     for (i = 0; i < glyph->ncontours; i++)
     {
         j = (int)big16toh(endPtsOfContours[i]);
         glyph->outline->cont[i].length = j - n;
         glyph->outline->cont[i].subglyph_id = glyph_index;
         glyph->outline->cont[i].subglyph_order = 0;
+
+        npoints_remaining -= glyph->outline->cont[i].length;
+        if (npoints_remaining < 0) return TTF_ERR_FMT;
+
         if (i != glyph->ncontours - 1)
             glyph->outline->cont[i + 1].pt = glyph->outline->cont[i].pt + j - n;
         n = j;
@@ -1151,11 +1157,15 @@ static int ttf_extract_tables(const uint8_t *data, int size, pps_t *s)
     rec = (ttf_tab_rec_t *)(s->hdr + 1);
 
     #define check_tag(str) (*(uint32_t *)rec->tableTag != *(uint32_t *)str)
-    #define match(type, name, str) \
+    #define match(type, name, str)                      \
     if (*(uint32_t *)rec->tableTag == *(uint32_t *)str) \
-    { \
-        s->s##name = rec->length; \
-        s->p##name = (type)(data + rec->offset); \
+    {                                                   \
+        s->s##name = rec->length;                       \
+        s->p##name = (type)(data + rec->offset);        \
+        if (rec->offset > INT_MAX - rec->length)        \
+            return TTF_ERR_FMT;                         \
+        if (rec->offset + rec->length > (unsigned)size) \
+            return TTF_ERR_FMT;                         \
     }
 
     while (ntab--)
@@ -1163,6 +1173,7 @@ static int ttf_extract_tables(const uint8_t *data, int size, pps_t *s)
         conv32(rec->checkSum);
         conv32(rec->offset);
         conv32(rec->length);
+        if (rec->offset > INT_MAX - rec->length) return TTF_ERR_FMT;
         if (rec->offset + rec->length > (unsigned)size) return TTF_ERR_FMT;
         if (check_tag("head"))
             if (ttf_checksum(data + rec->offset, rec->length) != rec->checkSum)
@@ -1314,7 +1325,7 @@ static int locate_fmt4_table(pps_t *s)
     for (i = 0; i < ntab; i++)
     {
         int offset = big32toh(s->pcmap->encRecs[i].offset);
-        if (offset + 4 > s->scmap) return TTF_ERR_FMT;
+        if (offset + 4 > s->scmap || offset < 0) return TTF_ERR_FMT;
         uint16_t format = *(uint16_t *)((char *)s->pcmap + offset);
         if (big16toh(format) != 4) continue;
         s->pfmt4 = (ttf_fmt4_t *)((char *)s->pcmap + offset);

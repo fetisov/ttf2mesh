@@ -681,12 +681,14 @@ int parse_simple_glyph(ttf_glyph_t *glyph, int glyph_index, uint8_t *p, int avai
     for (i = 0; i < glyph->ncontours; i++)
     {
         j = (int)big16toh(endPtsOfContours[i]);
-        glyph->outline->cont[i].length = j - n;
+
+        int length = j - n;
+        npoints_remaining -= length;
+        if (length < 0 || npoints_remaining < 0) return TTF_ERR_FMT;
+
+        glyph->outline->cont[i].length = length;
         glyph->outline->cont[i].subglyph_id = glyph_index;
         glyph->outline->cont[i].subglyph_order = 0;
-
-        npoints_remaining -= glyph->outline->cont[i].length;
-        if (npoints_remaining < 0) return TTF_ERR_FMT;
 
         if (i != glyph->ncontours - 1)
             glyph->outline->cont[i + 1].pt = glyph->outline->cont[i].pt + j - n;
@@ -919,6 +921,7 @@ int parse_composite_glyph(ttf_t *ttf, ttf_glyph_t *glyph, uint8_t *p, int avail)
 
     /* initialize outline */
     glyph->outline = allocate_ttf_outline(glyph->ncontours, glyph->npoints);
+    int npoints_remaining = glyph->npoints;
     if (glyph->outline == NULL) return TTF_ERR_NOMEM;
 
     /* initialize other glyph fields */
@@ -991,7 +994,12 @@ int parse_composite_glyph(ttf_t *ttf, ttf_glyph_t *glyph, uint8_t *p, int avail)
         for (i = 0; i < ttf->glyphs[glyphIndex].ncontours; i++)
         {
             glyph->outline->cont[n].pt = curr;
-            glyph->outline->cont[n].length = ttf->glyphs[glyphIndex].outline->cont[i].length;
+
+            int length = ttf->glyphs[glyphIndex].outline->cont[i].length;
+            npoints_remaining -= length;
+            if (length < 0 || npoints_remaining < 0) return TTF_ERR_FMT;
+
+            glyph->outline->cont[n].length = length;
             glyph->outline->cont[n].subglyph_id = glyphIndex;
             glyph->outline->cont[n].subglyph_order = nglyphs;
             for (j = 0; j < glyph->outline->cont[n].length; j++)

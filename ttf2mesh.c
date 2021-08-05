@@ -1058,6 +1058,10 @@ int parse_glyf_table(ttf_t *ttf, pps_t *pp)
     {
         offset = pp->ploca16 ? pp->ploca16[i] * 2 : pp->ploca32[i];
         if (offset == pp->sglyf) continue;
+
+        if (offset + (int)sizeof(ttf_glyfh_t) > pp->sglyf)
+            return TTF_ERR_FMT;
+
         hdr = (ttf_glyfh_t *)(pp->pglyf + offset);
         if ((int16_t)big16toh(hdr->numberOfContours) >= 0) continue;
         result = parse_composite_glyph(ttf, ttf->glyphs + i, pp->pglyf + offset, pp->sglyf - offset);

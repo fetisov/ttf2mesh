@@ -23,6 +23,16 @@
  */
 
 /*
+
+    Release 1.4 (August 8, 2021)
+        New Features and Improvements:
+            -
+        Non-Backwards Compatible Changes:
+            -
+        Bug fixes:
+            - Additional checking of read values in the parser
+              Thanks to Mika blaind for the improvements
+
     Release 1.3 (May 5, 2021)
         New Features and Improvements:
             - ttf_glyph2mesh3d and ttf_free_mesh3d functions added for working with 3d-mesh
@@ -75,7 +85,7 @@
 extern "C" {
 #endif
 
-#define TTF2MESH_VERSION   "1.3"  /* current library version */
+#define TTF2MESH_VERSION   "1.4"  /* current library version */
 
 #define TTF_MAX_FILE       32     /* font file size limit, MB */
 

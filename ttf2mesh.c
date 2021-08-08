@@ -687,6 +687,17 @@ int parse_simple_glyph(ttf_glyph_t *glyph, int glyph_index, uint8_t *p, int avai
         n = j;
     }
 
+    /* check initialized outlines */
+    n = 0;
+    for (i = 0; i < glyph->outline->ncontours; i++)
+    {
+        if (glyph->outline->cont[i].length < 0)
+            return TTF_ERR_FMT;
+        n += glyph->outline->cont[i].length;
+    }
+    if (n != glyph->npoints)
+        return TTF_ERR_FMT;
+
     /* read instructionLength */
     if (avail < 2) return TTF_ERR_FMT;
     n = big16toh(*(uint16_t *)p);
@@ -1029,7 +1040,6 @@ int parse_glyf_table(ttf_t *ttf, pps_t *pp)
                 if (pp->ploca32[i] == pp->ploca32[i + 1])
                     continue; /* glyph has no outline */
         }
-        /* offset = pp->ploca16 ? pp->ploca16[i] * 2 : pp->ploca32[i]; */
         if (offset == pp->sglyf) continue; /* glyph has no outline */
         if (offset + (int)sizeof(ttf_glyfh_t) >= pp->sglyf)
             continue; /* strict parser must return TTF_ERR_FMT */
@@ -1044,6 +1054,8 @@ int parse_glyf_table(ttf_t *ttf, pps_t *pp)
     {
         offset = pp->ploca16 ? pp->ploca16[i] * 2 : pp->ploca32[i];
         if (offset == pp->sglyf) continue;
+        if (offset + (int)sizeof(ttf_glyfh_t) >= pp->sglyf)
+            continue; /* strict parser must return TTF_ERR_FMT */
         hdr = (ttf_glyfh_t *)(pp->pglyf + offset);
         if ((int16_t)big16toh(hdr->numberOfContours) >= 0) continue;
         result = parse_composite_glyph(ttf, ttf->glyphs + i, pp->pglyf + offset, pp->sglyf - offset);
@@ -1163,7 +1175,9 @@ static int ttf_extract_tables(const uint8_t *data, int size, pps_t *s)
         conv32(rec->checkSum);
         conv32(rec->offset);
         conv32(rec->length);
-        if (rec->offset + rec->length > (unsigned)size) return TTF_ERR_FMT;
+        if (rec->offset > (uint32_t)size || rec->length > (uint32_t)size)
+            return TTF_ERR_FMT;
+        if (rec->offset + rec->length > (uint32_t)size) return TTF_ERR_FMT;
         if (check_tag("head"))
             if (ttf_checksum(data + rec->offset, rec->length) != rec->checkSum)
                 return TTF_ERR_CSUM;
@@ -1314,7 +1328,7 @@ static int locate_fmt4_table(pps_t *s)
     for (i = 0; i < ntab; i++)
     {
         int offset = big32toh(s->pcmap->encRecs[i].offset);
-        if (offset + 4 > s->scmap) return TTF_ERR_FMT;
+        if (offset + 4 > s->scmap || offset + 4 < 0) return TTF_ERR_FMT;
         uint16_t format = *(uint16_t *)((char *)s->pcmap + offset);
         if (big16toh(format) != 4) continue;
         s->pfmt4 = (ttf_fmt4_t *)((char *)s->pcmap + offset);

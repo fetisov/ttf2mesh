@@ -51,7 +51,6 @@
 
 #include "ttf2mesh.h"
 #include <string.h>
-#include <malloc.h>
 #include <math.h>
 #include <stdlib.h>
 #include <stdio.h>

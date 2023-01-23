@@ -84,7 +84,7 @@
     <item row="2" column="0" colspan="2">
      <widget class="QTabWidget" name="tabWidget">
       <property name="currentIndex">
-       <number>3</number>
+       <number>0</number>
       </property>
       <widget class="QWidget" name="curvesTab">
        <attribute name="title">
@@ -549,7 +549,7 @@
      <x>0</x>
      <y>0</y>
      <width>686</width>
-     <height>22</height>
+     <height>29</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuTools">

@@ -996,8 +996,10 @@ void MainWindow::updateUi()
 void MainWindow::setupFontList()
 {
     ui->fonts->clear();
-    for (int i = 0; fonts[i] != NULL; i++)
+    int i;
+    for (i = 0; fonts[i] != NULL; i++)
         ui->fonts->addItem(QString("%1").arg(fonts[i]->names.full_name));
+    qDebug() << i << "fonts in list";
 }
 
 void MainWindow::updateGlyphsList()
@@ -1020,8 +1022,9 @@ void MainWindow::updateGlyphsList()
         for (int i = 0; i < ttf->nchars; i++)
         {
             QString s;
+            QChar c = ttf->chars[i] < ' ' || ttf->chars[i] >= 0xFFFF ? ' ' : QChar((uint16_t)ttf->chars[i]);
             s += QString("[%1] glyph %2, u+%3 / %4")
-                .arg(ttf->chars[i] < ' ' ? "" : QString::fromUtf16(ttf->chars + i, 1))
+                .arg(QString(c))
                 .arg(ttf->char2glyph[i])
                 .arg(QString::number(ttf->chars[i], 16))
                 .arg((unsigned)ttf->chars[i]);

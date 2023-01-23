@@ -145,8 +145,8 @@ struct ttf_file
 {
     int nchars;                   /* number of the font characters */
     int nglyphs;                  /* number of glyphs (usually less than nchars) */
-    uint16_t *chars;              /* utf16 codes array with nchars length */
-    uint16_t *char2glyph;         /* glyph indeces array with nchars length */
+    uint32_t *chars;              /* utf32 codes array with nchars length */
+    uint32_t *char2glyph;         /* glyph indeces array with nchars length */
     ttf_glyph_t *glyphs;          /* array of the font glyphs with nglyphs length */
     const char *filename;         /* full path and file name of the font */
     uint32_t glyf_csum;           /* 'glyf' table checksum (used by ttf_list_fonts) */
@@ -452,10 +452,10 @@ int ttf_list_match_id(ttf_t **list, const char *requirements, ...);
 /**
  * @brief Translate unicode character to glyph index in font object
  * @param ttf Pointer to font object
- * @param utf16_char Unicode character
+ * @param utf32_char Unicode character (utf16 or utf32)
  * @return Glyph index in glyphs array or -1
  */
-int ttf_find_glyph(const ttf_t *ttf, uint16_t utf16_char);
+int ttf_find_glyph(const ttf_t *ttf, uint32_t utf32_char);
 
 /**
  * @brief Convert continuous qbezier curves to their three-point variant

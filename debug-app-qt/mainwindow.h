@@ -60,7 +60,6 @@ private slots:
     void onGlyphSelect();
     void onLoadDir();
     void onLoadSys();
-    void onPoly2tri();
     void onGlyph2Obj();
     void onFont2Obj();
     void onAppLink(const QString &link);

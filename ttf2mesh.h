@@ -24,6 +24,16 @@
 
 /*
 
+    Release 1.5 (January 31, 2023)
+        New Features and Improvements:
+            - added support for supplementary-plane characters (U+10000 to U+10FFFF)
+              Thanks to Fadis for this improvement
+            - added userdata[] arrays to ttf_t and ttf_glyph_t structures
+        Non-Backwards Compatible Changes:
+            -
+        Bug fixes:
+            -
+
     Release 1.4 (August 8, 2021)
         New Features and Improvements:
             -
@@ -124,6 +134,11 @@ extern "C" {
 
 #define TTF_FEATURES_DFLT   0     /* default value of ttf_glyph2mesh features parameter */
 #define TTF_FEATURE_IGN_ERR 1     /* flag of ttf_glyph2mesh to ignore uncritical mesh errors */
+
+/* lenght of userdata array in ttf_t and ttf_glyph_t structures */
+
+#define TTF_GLYPH_USERDATA 4 /* lenght of userdata array in ttf_t */
+#define TTF_FILE_USERDATA  4 /* lenght of userdata array ttf_glyph_t */
 
 /* all library types */
 
@@ -236,6 +251,10 @@ struct ttf_file
         float xMaxExtent;         /* Max(lsb + (xMax - xMin)) */
         float caretSlope;         /* The slope of the cursor in radians, ~0 for horizontal not italic font and ~0.2 for italic font */
     } hhea;
+
+    /* for external use */
+
+    void *userdata[TTF_FILE_USERDATA];
 };
 
 /**
@@ -264,6 +283,10 @@ struct ttf_glyph
     /* glyph outline */
 
     ttf_outline_t *outline;       /* original outline of the glyph or NULL */
+
+    /* for external use */
+
+    void *userdata[TTF_GLYPH_USERDATA];
 };
 
 /**

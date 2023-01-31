@@ -563,7 +563,6 @@
     <addaction name="actFont2Obj"/>
     <addaction name="actTestFont"/>
     <addaction name="actTestAllFonts"/>
-    <addaction name="actPoly2tri"/>
    </widget>
    <widget class="QMenu" name="menuFonts">
     <property name="title">
@@ -814,22 +813,6 @@
     <hint type="sourcelabel">
      <x>345</x>
      <y>153</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>345</x>
-     <y>315</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>actPoly2tri</sender>
-   <signal>triggered()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>onPoly2tri()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
     </hint>
     <hint type="destinationlabel">
      <x>345</x>

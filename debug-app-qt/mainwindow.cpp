@@ -550,10 +550,6 @@ int ttf_point_xcmp(const void *p1, const void *p2)
     return ((ttf_point_t *)p1)->x - ((ttf_point_t *)p2)->x;
 }
 
-#include "poly2tri/poly2tri.h"
-
-using namespace p2t;
-
 QString mesherDebugStr(int code, const mesher_t *m, int time)
 {
     QString res;
@@ -1215,52 +1211,6 @@ void MainWindow::onLoadSys()
     setupFontList();
     updating = 0;
     updateUi();
-}
-
-void make_poly2tri_data(ttf_point_t *p, int count, std::vector<Point> &points, std::vector<Point *> &ppoints)
-{
-    points.resize(count);
-    ppoints.resize(count);
-    for (int i = 0; i < count; i++)
-    {
-        points[i].x = p[i].x;
-        points[i].y = p[i].y;
-        ppoints[i] = &points[i];
-    }
-}
-
-void MainWindow::onPoly2tri()
-{
-    if (g == NULL) return;
-    ttf_outline_t *o = ttf_linear_outline(g, ui->quality->value());
-    if (o == NULL) return;
-    QTime t = QTime::currentTime();
-    std::vector<Point> points;
-    std::vector<Point *> ppoints;
-    make_poly2tri_data(o->cont[0].pt, o->cont[0].length, points, ppoints);
-    CDT cdt(ppoints);
-    std::vector<Point> hpoints;
-    std::vector<Point *> phpoints;
-    if (o->ncontours > 1)
-    {
-        make_poly2tri_data(o->cont[1].pt, o->cont[1].length, hpoints, phpoints);
-        cdt.AddHole(phpoints);
-    }
-    cdt.Triangulate();
-    std::vector<Triangle *> tri = cdt.GetTriangles();
-    int dt = t.elapsed();
-    axes();
-    hold(true);
-    for (size_t i = 0; i < tri.size(); i++)
-    {
-        Point *p1 = tri[i]->GetPoint(0);
-        Point *p2 = tri[i]->GetPoint(1);
-        Point *p3 = tri[i]->GetPoint(2);
-        plot(fvec() << p1->x << p2->x << p3->x << p1->x,
-             fvec() << p1->y << p2->y << p3->y << p1->y,
-             "-k");
-    }
-    title(QString("Time %1 ms").arg(dt));
 }
 
 void MainWindow::onGlyph2Obj()

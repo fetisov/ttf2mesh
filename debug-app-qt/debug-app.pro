@@ -30,28 +30,16 @@ SOURCES += \
         linalg.c \
         qmplot.cpp \
         qmwrap.cpp \
-    poly2tri/common/shapes.cc \
-    poly2tri/sweep/advancing_front.cc \
-    poly2tri/sweep/cdt.cc \
-    poly2tri/sweep/sweep.cc \
-    poly2tri/sweep/sweep_context.cc \
-    textrenderer.cpp \
-    ../ttf2mesh.c
+        textrenderer.cpp \
+        ../ttf2mesh.c
 
 HEADERS += \
         mainwindow.h \
         linalg.h \
         qmplot.h \
         qmwrap.h \
-    poly2tri/common/shapes.h \
-    poly2tri/common/utils.h \
-    poly2tri/sweep/advancing_front.h \
-    poly2tri/sweep/cdt.h \
-    poly2tri/sweep/sweep.h \
-    poly2tri/sweep/sweep_context.h \
-    poly2tri/poly2tri.h \
-    textrenderer.h \
-    ../ttf2mesh.h
+        textrenderer.h \
+        ../ttf2mesh.h
 
 INCLUDEPATH += ../
 

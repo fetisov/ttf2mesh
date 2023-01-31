@@ -1352,8 +1352,6 @@ static int parse_fmt12(ttf_t *ttf, uint8_t *data, int dataSize, bool headers_onl
     if (smgSize < sizeof(ttf_fmt12_smg_t) * tab->numGroups)
         return TTF_ERR_FMT;
 
-    if (headers_only) return TTF_DONE;
-
     smgs = (ttf_fmt12_smg_t *)(data + sizeof(ttf_fmt12_t));
     k = 0;
     for (i = 0; i < tab->numGroups; i++)
@@ -1361,8 +1359,16 @@ static int parse_fmt12(ttf_t *ttf, uint8_t *data, int dataSize, bool headers_onl
         conv32(smgs[i].startCharCode);
         conv32(smgs[i].endCharCode);
         conv32(smgs[i].startGlyphID);
-        k += smgs[i].endCharCode - smgs[i].startCharCode + 1;
+        for (j = smgs[i].startCharCode; j <= smgs[i].endCharCode; j++)
+        {
+            int range = find_ubrange(j);
+            if (range >= 0)
+                ttf->ubranges[range / 32] |= (uint32_t)1 << (range & 31);
+            k++;
+        }
     }
+
+    if (headers_only) return TTF_DONE;
 
     ttf->nchars = k;
     ttf->chars = (uint32_t *)malloc(sizeof(uint32_t) * 2 * ttf->nchars);

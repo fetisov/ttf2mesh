@@ -23,5 +23,4 @@ To compile examples on Linux system you can use the GNU make utility: `make -C e
 You can read information on how the library works at [this link](https://habr.com/post/501268).
 
 [PayPal me](https://www.paypal.me/fetisovs) or:
-*MasterCard* 5469 3800 5517 1176
 *wmz* Z518568605100 *wmr* R885157851601

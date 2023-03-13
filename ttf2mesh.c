@@ -3313,7 +3313,7 @@ int optimize(mesher_t *m, mes_t *e, int deep)
         return MESHER_DONE;
 
     if (done1 && done2)
-        if (e->alt_cc[0].radius + e->alt_cc[1].radius + EPSILON > e->tr[0]->cc.radius + e->tr[1]->cc.radius)
+        if (e->alt_cc[0].radius + e->alt_cc[1].radius >= e->tr[0]->cc.radius + e->tr[1]->cc.radius)
             return MESHER_DONE;
 
     int res = flip_edge(m, e);

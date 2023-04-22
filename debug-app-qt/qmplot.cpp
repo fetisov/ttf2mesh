@@ -1236,6 +1236,7 @@ void QMAxes::outTextLabels(QPaintDevice *dev, int w, int h)
         if (text[i].align & Qt::AlignVCenter)
             ty = lround(v.y() - sz.height() / 2);
         painter.setFont(text[i].font);
+        painter.setPen(text[i].color);
         painter.drawText(tx, h - ty, text[i].string);
     }
 

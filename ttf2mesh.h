@@ -23,6 +23,14 @@
  */
 
 /*
+    Release 1.6 (April 23, 2023)
+        New Features and Improvements:
+            - smooth shading on the glyph geometry in ttf_glyph2mesh3d function
+              Thanks to Sum80 for highlighting this improvement
+        Non-Backwards Compatible Changes:
+            -
+        Bug fixes:
+            -
 
     Release 1.5 (January 31, 2023)
         New Features and Improvements:
@@ -95,7 +103,7 @@
 extern "C" {
 #endif
 
-#define TTF2MESH_VERSION   "1.5"  /* current library version */
+#define TTF2MESH_VERSION   "1.6"  /* current library version */
 
 #define TTF_MAX_FILE       32     /* font file size limit, MB */
 
@@ -314,7 +322,8 @@ struct ttf_point
     float y;                      /* point y coordinate in EM */
     uint32_t spl : 1;             /* point of spliting process */
     uint32_t onc : 1;             /* point on curve */
-    uint32_t res : 30;            /* reserved for internal use */
+    uint32_t shd : 1;             /* smooth shading */
+    uint32_t res : 29;            /* reserved for internal use */
 };
 
 /**
@@ -339,7 +348,7 @@ struct ttf_mesh
 };
 
 /**
- * @brief The mesh struct
+ * @brief The mesh3d struct
  */
 struct ttf_mesh3d
 {

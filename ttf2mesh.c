@@ -2360,6 +2360,21 @@ static int ttf_fix_linear_bags(ttf_point_t *pt, int count)
     return n >= 3 ? n : 0;
 }
 
+static void fill_shading_flags(ttf_point_t *pt, int count)
+{
+    if (count < 3) return;
+    for (int i = 0; i < count; i++)
+    {
+        ttf_point_t *p[3];
+        p[0] = pt + (count + i - 1) % count;
+        p[1] = pt + i;
+        p[2] = pt + (i + 1) % count;
+        if (p[1]->onc)
+            p[1]->shd = ~p[0]->onc & ~p[2]->onc; else
+            p[1]->shd = 1;
+    }
+}
+
 ttf_outline_t *ttf_linear_outline(const ttf_glyph_t *glyph, uint8_t quality)
 {
     int i, npoints;
@@ -2380,6 +2395,7 @@ ttf_outline_t *ttf_linear_outline(const ttf_glyph_t *glyph, uint8_t quality)
     {
         npoints = linearize_contour(o->cont[i].pt, s->cont[i].pt, o->cont[i].length, quality);
         npoints = ttf_fix_linear_bags(s->cont[i].pt, npoints);
+        fill_shading_flags(s->cont[i].pt, npoints);
         if (i != o->ncontours - 1)
             s->cont[i + 1].pt = s->cont[i].pt + npoints;
         s->cont[i].length = npoints;
@@ -2670,6 +2686,7 @@ struct mesher_vertex_struct
 {
     float x;
     float y;
+    bool shd_flag;
     int contour;
     int subglyph;
     bool is_hole;
@@ -2841,6 +2858,7 @@ mesher_t *create_mesher(const ttf_outline_t *o)
             LIST_INIT(&v->edges);
             v->x = pt[j].x;
             v->y = pt[j].y;
+            v->shd_flag = pt[j].shd;
             v->contour = i;
             v->subglyph = o->cont[i].subglyph_order;
             v->is_hole = hole;
@@ -4010,6 +4028,34 @@ int fix_contours_bugs(mesher_t *m)
     return MESHER_DONE;
 }
 
+static void make_triangles_ccw(mesher_t *mesh)
+{
+    for (mts_t *t = mesh->tused.next; t != &mesh->tused; t = t->next)
+    {
+        mvs_t *v1, *v2, *v3;
+
+        /*
+
+              v3
+              /\
+          e0 /  \ e2
+            /    \
+           /______\
+        v1    e1    v2
+
+        */
+
+        v1 = EDGES_COMMON_VERT(t->edge[1], t->edge[0]);
+        v2 = EDGES_COMMON_VERT(t->edge[1], t->edge[2]);
+        v3 = EDGES_COMMON_VERT(t->edge[0], t->edge[2]);
+        float d1[2], d2[2];
+        VECSUB(d1, &v2->x, &v3->x);
+        VECSUB(d2, &v3->x, &v1->x);
+        if (VECCROSS(d1, d2) < 0)
+            SWAP(mes_t *, t->edge[0], t->edge[2]);
+    }
+}
+
 int mesher(mesher_t *m, int deep)
 {
     int res = fix_contours_bugs(m);
@@ -4041,6 +4087,7 @@ int mesher(mesher_t *m, int deep)
         res = optimize_all(m, deep, object);
         if (res != MESHER_DONE) return res;
     }
+    make_triangles_ccw(m);
     return MESHER_DONE;
 }
 
@@ -4138,43 +4185,94 @@ failed:
     return TTF_ERR_MESHER;
 }
 
-static inline void calc_normal(float *n, const float *v1, const float *v2, const float *v3)
+static inline void calc_normal_to_ccw_edge(const mvs_t *v1, const mvs_t *v2, float *res)
 {
-    float len, d1[3], d2[3];
-    d1[0] = v1[0] - v2[0]; d1[1] = v1[1] - v2[1]; d1[2] = v1[2] - v2[2];
-    d2[0] = v1[0] - v3[0]; d2[1] = v1[1] - v3[1]; d2[2] = v1[2] - v3[2];
-    n[0] = d1[1] * d2[2] - d1[2] * d2[1];
-    n[1] = d1[2] * d2[0] - d1[0] * d2[2];
-    n[2] = d1[0] * d2[1] - d1[1] * d2[0];
-    len = sqrtf(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
-    if (len < 1e-8)
-    {
-        n[0] = 0.0f;
-        n[1] = 0.0f;
-        n[2] = 0.0f;
-        return;
-    }
-    len = 1.0f / len;
-    n[0] *= len;
-    n[1] *= len;
-    n[2] *= len;
+    float dx = v2->x - v1->x;
+    float dy = v2->y - v1->y;
+    float factor = sqrt(dx * dx + dy * dy);
+    factor = factor < 1e-8 ? 0 : 1.0f / factor;
+    dx *= factor;
+    dy *= factor;
+    res[0] = dy;
+    res[1] = -dx;
+    res[2] = 0;
 }
 
-static inline void make_quad(float *v, int *id, int vbase, const float *xy1, const float *xy2, float depth)
+static void make_side_quad(const mvs_t *v1, const mvs_t *v2, const mes_t *e1,
+                           float *v, int *i, float *n, int vbase, float depth)
 {
+    /*
+
+          /\
+         /  \
+     v1 /    \ v2
+       /__e1__\
+     #0| side |#3
+       |______|
+     #1        #2
+
+    */
+(void)e1;
     /* four vertices */
-    *v++ = xy1[0]; *v++ = xy1[1]; *v++ = depth;
-    *v++ = xy2[0]; *v++ = xy2[1]; *v++ = depth;
-    *v++ = xy1[0]; *v++ = xy1[1]; *v++ = -depth;
-    *v++ = xy2[0]; *v++ = xy2[1]; *v++ = -depth;
-    /* first triangle */
-    *id++ = vbase + 0;
-    *id++ = vbase + 1;
-    *id++ = vbase + 2;
-    /* second triangle */
-    *id++ = vbase + 2;
-    *id++ = vbase + 1;
-    *id++ = vbase + 3;
+    *v++ = v1->x; *v++ = v1->y; *v++ = +depth;
+    *v++ = v1->x; *v++ = v1->y; *v++ = -depth;
+    *v++ = v2->x; *v++ = v2->y; *v++ = -depth;
+    *v++ = v2->x; *v++ = v2->y; *v++ = +depth;
+
+    /* first triangle indices */
+    *i++ = vbase + 0;
+    *i++ = vbase + 1;
+    *i++ = vbase + 3;
+
+    /* second triangle indices */
+    *i++ = vbase + 1;
+    *i++ = vbase + 2;
+    *i++ = vbase + 3;
+
+    /* calc normal to side quad */
+    float N[3];
+    float n01[3];
+    float n23[3];
+    calc_normal_to_ccw_edge(v1, v2, N);
+
+    /* vertex #0 and #1 normal */
+    if (v1->shd_flag)
+    {
+        const mvs_t *nb = v2 == v1->next_in_contour ? v1->prev_in_contour : v1->next_in_contour;
+        float nb_n[3];
+        calc_normal_to_ccw_edge(nb, v1, nb_n);
+        n01[0] = (N[0] + nb_n[0]) / 2;
+        n01[1] = (N[1] + nb_n[1]) / 2;
+        n01[2] = (N[2] + nb_n[2]) / 2;
+    }
+    else
+    {
+        n01[0] = N[0];
+        n01[1] = N[1];
+        n01[2] = N[2];
+    }
+
+    /* vertex #2 and #3 normal */
+    if (v2->shd_flag)
+    {
+        const mvs_t *nb = v1 == v2->next_in_contour ? v2->prev_in_contour : v2->next_in_contour;
+        float nb_n[3];
+        calc_normal_to_ccw_edge(v2, nb, nb_n);
+        n23[0] = (N[0] + nb_n[0]) / 2;
+        n23[1] = (N[1] + nb_n[1]) / 2;
+        n23[2] = (N[2] + nb_n[2]) / 2;
+    }
+    else
+    {
+        n23[0] = N[0];
+        n23[1] = N[1];
+        n23[2] = N[2];
+    }
+
+    *n++ = n01[0]; *n++ = n01[1]; *n++ = n01[2];
+    *n++ = n01[0]; *n++ = n01[1]; *n++ = n01[2];
+    *n++ = n23[0]; *n++ = n23[1]; *n++ = n23[2];
+    *n++ = n23[0]; *n++ = n23[1]; *n++ = n23[2];
 }
 
 int ttf_glyph2mesh3d(ttf_glyph_t *glyph, ttf_mesh3d_t **output, uint8_t quality, int features, float depth)
@@ -4191,7 +4289,7 @@ int ttf_glyph2mesh3d(ttf_glyph_t *glyph, ttf_mesh3d_t **output, uint8_t quality,
     if (quality < 8) quality = 8;
     if (quality > 128) quality = 128;
 
-    /* Создаём outline и mesher */
+    /* Create outline and mesher */
     o = ttf_linear_outline(glyph, quality);
     if (o == NULL) return TTF_ERR_NOMEM;
     if (o->total_points < 3)
@@ -4206,12 +4304,12 @@ int ttf_glyph2mesh3d(ttf_glyph_t *glyph, ttf_mesh3d_t **output, uint8_t quality,
         return TTF_ERR_NOMEM;
     }
 
-    /* Запускаем mesher */
+    /* Start mesher */
     res = mesher(mesh, 128);
     if (res == MESHER_FAIL) goto failed;
     if (res == MESHER_WARN && (features & TTF_FEATURE_IGN_ERR) == 0) goto failed;
 
-    /* Считаем число треугольников и внешних рёбер */
+    /* Count the number of triangles and outer edges */
     int nt = 0;
     int ne = 0;
     for (mts_t *t = mesh->tused.next; t != &mesh->tused; t = t->next)
@@ -4222,7 +4320,7 @@ int ttf_glyph2mesh3d(ttf_glyph_t *glyph, ttf_mesh3d_t **output, uint8_t quality,
         nt++;
     }
 
-    /* Создаём выходной объект */
+    /* Create output object */
     out = (ttf_mesh3d_t *)malloc(
         sizeof(ttf_mesh3d_t) +
         (mesh->nv * 2 + ne * 4) * sizeof(*out->vert) +
@@ -4242,25 +4340,30 @@ int ttf_glyph2mesh3d(ttf_glyph_t *glyph, ttf_mesh3d_t **output, uint8_t quality,
     *(void **)&out->faces = &out->vert[out->nvert];
     *(void **)&out->normals = &out->faces[out->nfaces];
 
-    /* Заполняем координаты вершин */
-    float *v = &out->vert[0].x;
+    /* Fill vertices and normals of front and back planes */
     depth *= 0.5f;
+    float *n = &out->normals[0].x;
+    float *v = &out->vert[0].x;
     for (int i = 0; i < mesh->nv; i++)
     {
         *v++ = mesh->v[i].x;
         *v++ = mesh->v[i].y;
         *v++ = depth;
+        *n++ = 0;
+        *n++ = 0;
+        *n++ = 1;
     }
     for (int i = 0; i < mesh->nv; i++)
     {
         *v++ = mesh->v[i].x;
         *v++ = mesh->v[i].y;
         *v++ = -depth;
+        *n++ = 0;
+        *n++ = 0;
+        *n++ = -1;
     }
 
-    int *i1 = &out->faces[0].v1;
-    int *i2 = i1 + nt * 3;
-    int *i3 = i2 + nt * 3;
+    int *idx = &out->faces[0].v1;
 
     int vbase = mesh->nv * 2;
     for (mts_t *t = mesh->tused.next; t != &mesh->tused; t = t->next)
@@ -4272,7 +4375,7 @@ int ttf_glyph2mesh3d(ttf_glyph_t *glyph, ttf_mesh3d_t **output, uint8_t quality,
               v3
               /\
           e0 /  \ e2
-            /    \
+            /CCW!\
            /______\
         v1    e1    v2
 
@@ -4281,57 +4384,41 @@ int ttf_glyph2mesh3d(ttf_glyph_t *glyph, ttf_mesh3d_t **output, uint8_t quality,
         v1 = EDGES_COMMON_VERT(t->edge[1], t->edge[0]);
         v2 = EDGES_COMMON_VERT(t->edge[1], t->edge[2]);
         v3 = EDGES_COMMON_VERT(t->edge[0], t->edge[2]);
-        float d1[2], d2[2];
-        VECSUB(d1, &v2->x, &v3->x);
-        VECSUB(d2, &v3->x, &v1->x);
-        if (VECCROSS(d1, d2) < 0)
-        {
-            SWAP(mes_t *, t->edge[0], t->edge[2]);
-            SWAP(mvs_t *, v1, v2);
-        }
 
-        i1[0] = v1 - mesh->v;
-        i1[1] = v2 - mesh->v;
-        i1[2] = v3 - mesh->v;
+        /* front triangle */
+        *idx++ = v1 - mesh->v;
+        *idx++ = v2 - mesh->v;
+        *idx++ = v3 - mesh->v;
 
-        i2[0] = v3 - mesh->v + mesh->nv;
-        i2[1] = v2 - mesh->v + mesh->nv;
-        i2[2] = v1 - mesh->v + mesh->nv;
-
-        i1 += 3;
-        i2 += 3;
+        /* back triangle */
+        *idx++ = v3 - mesh->v + mesh->nv;
+        *idx++ = v2 - mesh->v + mesh->nv;
+        *idx++ = v1 - mesh->v + mesh->nv;
 
         if (IS_CONTOUR_EDGE(t->edge[0]))
         {
-            make_quad(v, i3, vbase, &v1->x, &v3->x, depth);
-            v += 4 * 3;
-            i3 += 2 * 3;
-            vbase += 4;
+            make_side_quad(v3, v1, t->edge[0], v, idx, n, vbase, depth);
+            vbase += 4; /* four vertices */
+            v += 4 * 3; /* four vertices with three coordinates */
+            n += 4 * 3;
+            idx += 6;
         }
         if (IS_CONTOUR_EDGE(t->edge[1]))
         {
-            make_quad(v, i3, vbase, &v2->x, &v1->x, depth);
-            v += 4 * 3;
-            i3 += 2 * 3;
-            vbase += 4;
+            make_side_quad(v1, v2, t->edge[1], v, idx, n, vbase, depth);
+            vbase += 4; /* four vertices */
+            v += 4 * 3; /* four vertices with three coordinates */
+            n += 4 * 3;
+            idx += 6;
         }
         if (IS_CONTOUR_EDGE(t->edge[2]))
         {
-            make_quad(v, i3, vbase, &v3->x, &v2->x, depth);
-            v += 4 * 3;
-            i3 += 2 * 3;
-            vbase += 4;
+            make_side_quad(v2, v3, t->edge[2], v, idx, n, vbase, depth);
+            vbase += 4; /* four vertices */
+            v += 4 * 3; /* four vertices with three coordinates */
+            n += 4 * 3;
+            idx += 6;
         }
-    }
-
-    for (int i = 0; i < out->nfaces; i++)
-    {
-        float *v1 = &out->vert[out->faces[i].v1].x;
-        float *v2 = &out->vert[out->faces[i].v2].x;
-        float *v3 = &out->vert[out->faces[i].v3].x;
-        calc_normal(&out->normals[out->faces[i].v1].x, v1, v2, v3);
-        out->normals[out->faces[i].v2] = out->normals[out->faces[i].v1];
-        out->normals[out->faces[i].v3] = out->normals[out->faces[i].v1];
     }
 
     *output = out;

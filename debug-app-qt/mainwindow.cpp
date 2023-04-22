@@ -468,7 +468,7 @@ void MainWindow::updateCurvesPlot()
     if (ttf == NULL || g == NULL) return;
     if (g->outline == NULL) return;
 
-    linear = ttf_linear_outline(g, ui->smooth->isChecked() ? 128 : 0);
+    linear = ttf_linear_outline(g, ui->smooth->isChecked() ? TTF_QUALITY_HIGH : 0);
     o = linear;
     for (int i = 0; i < o->ncontours; i++)
     {
@@ -513,8 +513,13 @@ void MainWindow::updateCurvesPlot()
         plot(x, y, ".#999");
         for (int i = 0; i < o->ncontours; i++)
             for (int j = 0; j < o->cont[i].length; j++)
-                text(o->cont[i].pt[j].x, o->cont[i].pt[j].y, 0,
-                     QString().sprintf("p%i", j))->font.setPixelSize(10);
+            {
+                QMText *t = text(o->cont[i].pt[j].x, o->cont[i].pt[j].y, 0,
+                     QString().sprintf("p%i", j));
+                t->font.setPixelSize(12);
+                t->color = o->cont[i].pt[j].shd ? QColor(Qt::blue) :
+                                                  QColor(Qt::black);
+            }
     }
 
     fvec x;

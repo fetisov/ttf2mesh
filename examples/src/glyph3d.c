@@ -11,6 +11,7 @@
 static ttf_t *font = NULL;
 static ttf_glyph_t *glyph = NULL;
 static ttf_mesh3d_t *mesh = NULL;
+static bool draw_wireframe = true;
 
 static bool load_system_font()
 {
@@ -104,15 +105,18 @@ static void on_render()
         glVertexPointer(3, GL_FLOAT, 0, &mesh->vert->x);
         glEnableClientState(GL_NORMAL_ARRAY);
         glNormalPointer(GL_FLOAT, 0, &mesh->normals->x);
-        glDrawElements(GL_TRIANGLES, mesh->nfaces * 3,  GL_UNSIGNED_INT, &mesh->faces->v1);
+        glDrawElements(GL_TRIANGLES, mesh->nfaces * 3, GL_UNSIGNED_INT, &mesh->faces->v1);
 
-        glColor3f(0, 0, 1);
-        glLineWidth(1.0f);
-        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-        glEnable(GL_POLYGON_OFFSET_LINE);
-        glPolygonOffset(0, -1000.0);
-        glDrawElements(GL_TRIANGLES, mesh->nfaces * 3,  GL_UNSIGNED_INT, &mesh->faces->v1);
-        glDisable(GL_POLYGON_OFFSET_LINE);
+        if (draw_wireframe)
+        {
+            glColor3f(0, 0, 1);
+            glLineWidth(1.0f);
+            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+            glEnable(GL_POLYGON_OFFSET_LINE);
+            glPolygonOffset(0, -1000.0);
+            glDrawElements(GL_TRIANGLES, mesh->nfaces * 3,  GL_UNSIGNED_INT, &mesh->faces->v1);
+            glDisable(GL_POLYGON_OFFSET_LINE);
+        }
 
         glDisableClientState(GL_NORMAL_ARRAY);
         glDisableClientState(GL_VERTEX_ARRAY);
@@ -133,6 +137,8 @@ static void on_key_event(wchar_t key, const bool ctrl_alt_shift[3], bool pressed
     {
         if (key >= 'a' && key <= 'z' && ctrl_alt_shift[2])
             key = key - 'a' + 'A';
+        if (key == ' ')
+            draw_wireframe = !draw_wireframe;
         choose_glyph(key);
         glwindow_repaint();
     }
@@ -148,7 +154,7 @@ int app_main()
 
     choose_glyph(L'B');
 
-    if (!glwindow_create(400, 400, "Press [A...Z] to select glyph"))
+    if (!glwindow_create(400, 400, "[A...Z] switch glyph, [space] set wireframe"))
     {
         fprintf(stderr, "unable to create opengl window\n");
         return 2;

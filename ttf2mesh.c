@@ -54,7 +54,13 @@
 #include <math.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <signal.h>
+
+#if defined(TTF_NO_SIGNAL_H)
+#   define TTF_BREAKPOINT
+#else
+#   include <signal.h>
+#   define TTF_BREAKPOINT raise(SIGINT)
+#endif
 
 /* Big/little endian definitions */
 #if defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__)
@@ -3030,7 +3036,7 @@ void free_mesher(mesher_t *m)
     { \
         sprintf(m->debug.message, "%s", msg); \
         if (m->debug.breakpoint) \
-            raise(SIGINT); else \
+            TTF_BREAKPOINT; else \
             return MESHER_TRAP; \
     } \
     m->debug.curr_step++; \
@@ -3042,7 +3048,7 @@ void free_mesher(mesher_t *m)
     { \
         sprintf(m->debug.message, fmt, arg1, arg2); \
         if (m->debug.breakpoint) \
-            raise(SIGINT); else \
+            TTF_BREAKPOINT; else \
             return MESHER_TRAP; \
     } \
     m->debug.curr_step++; \
@@ -3066,13 +3072,13 @@ int debug_check_for_corrupt_lists(mesher_t *m)
     for (mes_t *e = m->eused.next; e != &m->eused; e = e->next)
         if (limit-- <= 0)
         {
-            raise(SIGINT);
+            TTF_BREAKPOINT;
             FAILED("CORRUPT eused");
         }
     for (mts_t *t = m->tused.next; t != &m->tused; t = t->next)
         if (limit-- <= 0)
         {
-            raise(SIGINT);
+            TTF_BREAKPOINT;
             FAILED("CORRUPT tused");
         }
     return MESHER_DONE;

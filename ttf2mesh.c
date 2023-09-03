@@ -54,7 +54,13 @@
 #include <math.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <signal.h>
+
+#if defined(TTF_NO_SIGNAL_H)
+#   define TTF_BREAKPOINT
+#else
+#   include <signal.h>
+#   define TTF_BREAKPOINT raise(SIGINT)
+#endif
 
 /* Big/little endian definitions */
 #if defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__)
@@ -1774,6 +1780,8 @@ error:
     return result;
 }
 
+#if !defined(TTF_NO_FILESYSTEM)
+
 #ifndef TTF_WINDOWS
 static void replace_tilda_to_home_path(char path[PATH_MAX])
 {
@@ -1974,9 +1982,14 @@ static int font_list_sorting(const void *a, const void *b)
     B = *(const ttf_t **)b;
     return strcmp(A->names.full_name, B->names.full_name);
 }
+#endif
 
 ttf_t **ttf_list_fonts(const char **directories, int dir_count, const char *mask)
 {
+#if defined(TTF_NO_FILESYSTEM)
+    (void)directories; (void)dir_count; (void)mask;
+    return NULL;
+#else
     ttf_t **res;
     int count, cap, i, n;
     char fullpath[PATH_MAX];
@@ -2012,10 +2025,15 @@ ttf_t **ttf_list_fonts(const char **directories, int dir_count, const char *mask
     res[n] = NULL;
 
     return res;
+#endif
 }
 
 ttf_t **ttf_list_system_fonts(const char *mask)
 {
+#if defined(TTF_NO_FILESYSTEM)
+    (void)mask;
+    return NULL;
+#else
     static const char *directories[] = {
 #if defined(TTF_LINUX)
         LINUX_FONTS_PATH
@@ -2025,6 +2043,7 @@ ttf_t **ttf_list_system_fonts(const char *mask)
     };
     int dir_count = sizeof(directories) / sizeof(char *);
     return ttf_list_fonts(directories, dir_count, mask);
+#endif
 }
 
 int ttf_find_glyph(const ttf_t *ttf, uint32_t utf32)
@@ -3030,7 +3049,7 @@ void free_mesher(mesher_t *m)
     { \
         sprintf(m->debug.message, "%s", msg); \
         if (m->debug.breakpoint) \
-            raise(SIGINT); else \
+            TTF_BREAKPOINT; else \
             return MESHER_TRAP; \
     } \
     m->debug.curr_step++; \
@@ -3042,7 +3061,7 @@ void free_mesher(mesher_t *m)
     { \
         sprintf(m->debug.message, fmt, arg1, arg2); \
         if (m->debug.breakpoint) \
-            raise(SIGINT); else \
+            TTF_BREAKPOINT; else \
             return MESHER_TRAP; \
     } \
     m->debug.curr_step++; \
@@ -3066,13 +3085,13 @@ int debug_check_for_corrupt_lists(mesher_t *m)
     for (mes_t *e = m->eused.next; e != &m->eused; e = e->next)
         if (limit-- <= 0)
         {
-            raise(SIGINT);
+            TTF_BREAKPOINT;
             FAILED("CORRUPT eused");
         }
     for (mts_t *t = m->tused.next; t != &m->tused; t = t->next)
         if (limit-- <= 0)
         {
-            raise(SIGINT);
+            TTF_BREAKPOINT;
             FAILED("CORRUPT tused");
         }
     return MESHER_DONE;

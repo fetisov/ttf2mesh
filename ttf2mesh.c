@@ -80,6 +80,9 @@
 #   error NO __BYTE_ORDER__ DEFINITION
 #endif
 
+#define ANDROID_FONTS_PATH    \
+    "/system/fonts"
+
 #define LINUX_FONTS_PATH      \
     "/usr/share/fonts",       \
     "/usr/local/share/fonts", \

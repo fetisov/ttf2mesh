@@ -36,7 +36,12 @@
 /* --------------- System dependent definitions and includes ---------------- */
 
 /* General OS selection definition */
-#if defined(__linux) || defined(__linux__)
+#if defined(ANDROID)
+#   define TTF_ANDROID
+#   define _DEFAULT_SOURCE 1
+#   define PATH_SEP '/'
+#   include <dirent.h>
+#elif defined(__linux) || defined(__linux__)
 #   define TTF_LINUX
 #   define _DEFAULT_SOURCE 1
 #   define PATH_SEP '/'
@@ -74,6 +79,9 @@
 #else
 #   error NO __BYTE_ORDER__ DEFINITION
 #endif
+
+#define ANDROID_FONTS_PATH    \
+    "/system/fonts"
 
 #define LINUX_FONTS_PATH      \
     "/usr/share/fonts",       \
@@ -1869,7 +1877,7 @@ static bool check_by_mask(const char *file_name, const char *mask)
     }
 }
 
-#if defined(TTF_LINUX)
+#if defined(TTF_LINUX) || defined(TTF_ANDROID)
 static ttf_t **load_fonts_from_dir(ttf_t **list, int *count, int *cap, const char *dir, char *fullpath, int deepmax, const char *mask)
 {
     DIR *d;
@@ -2035,7 +2043,9 @@ ttf_t **ttf_list_system_fonts(const char *mask)
     return NULL;
 #else
     static const char *directories[] = {
-#if defined(TTF_LINUX)
+#if defined(TTF_ANDROID)
+        ANDROID_FONTS_PATH
+#elif defined(TTF_LINUX)
         LINUX_FONTS_PATH
 #elif defined(TTF_WINDOWS)
         WINDOWS_FONTS_PATH
